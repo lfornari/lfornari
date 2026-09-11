@@ -1,0 +1,1922 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Análise de Perdas de Sinal por Proximidade Geográfica</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css">
+<style>
+:root{
+  --azul:#020039; --azul-70:rgba(2,0,57,.7); --verde:#00ff00; --vermelho:#ff3333;
+  --laranja:#ff9900; --ok:#2e7d32; --linha:#e4e6ec; --fundo:#f4f5f8; --texto:#1a1a1a;
+  --suave:#6a6f7d;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Roboto',-apple-system,sans-serif;color:var(--texto);background:#fff;line-height:1.55;font-size:14px}
+.container{max-width:1180px;margin:0 auto;padding:28px 20px 60px}
+
+/* ---------- topo ---------- */
+header{display:flex;align-items:flex-start;gap:18px;padding-bottom:20px;border-bottom:3px solid var(--azul);margin-bottom:20px;flex-wrap:wrap}
+header svg{height:34px;width:auto;flex-shrink:0}
+.head-txt{flex:1;min-width:240px}
+.head-txt h1{font-size:24px;font-weight:700;color:var(--azul);letter-spacing:-.4px;line-height:1.25}
+.head-txt p{font-size:13px;color:var(--suave);margin-top:4px}
+.head-acoes{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+
+.btn{padding:9px 16px;border-radius:4px;border:1px solid transparent;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;transition:opacity .15s;white-space:nowrap}
+.btn:hover{opacity:.86}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-primario{background:var(--azul);color:#fff}
+.btn-secundario{background:#fff;color:var(--azul);border-color:var(--azul)}
+.btn-fantasma{background:transparent;color:var(--suave);border-color:var(--linha)}
+.btn-mini{padding:5px 10px;font-size:12px}
+
+/* ---------- barra de meses ---------- */
+.meses{display:flex;gap:10px;align-items:stretch;overflow-x:auto;padding:4px 0 10px;margin-bottom:18px}
+.mes{min-width:132px;border:1px solid var(--linha);border-radius:5px;padding:9px 12px;cursor:pointer;background:#fff;position:relative;transition:all .15s;flex-shrink:0}
+.mes:hover{border-color:var(--azul-70)}
+.mes.ativo{border-color:var(--azul);border-width:2px;padding:8px 11px;background:#f7f8fc}
+.mes.base{border-style:dashed}
+.mes.erro{border-color:var(--laranja);background:#fff8ef}
+.mes-rot{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--suave)}
+.mes-val{font-size:19px;font-weight:700;color:var(--azul);line-height:1.2}
+.mes-tag{font-size:10px;color:var(--suave);text-transform:uppercase;letter-spacing:.4px}
+.mes-x{position:absolute;top:4px;right:6px;font-size:14px;color:#c3c6cf;line-height:1;background:none;border:0;cursor:pointer;padding:2px}
+.mes-x:hover{color:var(--vermelho)}
+.mes-add{min-width:132px;border:1px dashed var(--linha);border-radius:5px;display:flex;align-items:center;justify-content:center;color:var(--suave);font-size:12px;cursor:pointer;background:#fafbfc;flex-shrink:0;text-align:center;padding:8px}
+.mes-add:hover{border-color:var(--azul-70);color:var(--azul)}
+
+/* ---------- painel de filtros ---------- */
+.painel{border:1px solid var(--linha);border-radius:6px;background:#fafbfc;margin-bottom:20px}
+.painel-topo{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-bottom:1px solid var(--linha);flex-wrap:wrap}
+.painel-topo h2{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--azul)}
+.painel-corpo{padding:16px}
+.grade{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:16px 20px}
+.campo label{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--azul);margin-bottom:7px}
+.campo small{display:block;margin-top:5px;font-size:11px;color:#9aa0ad}
+.campo input[type=text],.campo input[type=date],.campo select{width:100%;padding:8px 10px;border:1px solid #d3d6de;border-radius:4px;font-family:inherit;font-size:13px;background:#fff}
+.faixa{display:flex;align-items:center;gap:10px}
+.faixa input[type=range]{flex:1;min-width:0;accent-color:var(--azul);cursor:pointer}
+.faixa output{min-width:48px;text-align:right;font-weight:700;font-size:14px;color:var(--azul);font-variant-numeric:tabular-nums}
+
+/* multiselect */
+.ms{position:relative}
+.ms-botao{width:100%;padding:8px 10px;border:1px solid #d3d6de;border-radius:4px;background:#fff;font-family:inherit;font-size:13px;text-align:left;cursor:pointer;display:flex;justify-content:space-between;gap:8px;align-items:center}
+.ms-botao span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ms-cont{background:var(--azul);color:#fff;border-radius:9px;padding:1px 7px;font-size:11px;font-weight:700;flex-shrink:0}
+.ms-lista{display:none;position:absolute;z-index:600;top:calc(100% + 3px);left:0;right:0;max-height:230px;overflow-y:auto;background:#fff;border:1px solid #cfd3dc;border-radius:4px;box-shadow:0 6px 18px rgba(0,0,0,.13);padding:5px}
+.ms.aberto .ms-lista{display:block}
+.ms-item{display:flex;align-items:center;gap:8px;padding:5px 7px;border-radius:3px;cursor:pointer;font-size:13px}
+.ms-item:hover{background:#eef1f8}
+.ms-item input{accent-color:var(--azul);cursor:pointer}
+.ms-item .qtd{margin-left:auto;color:#9aa0ad;font-size:11px}
+.ms-busca{width:100%;padding:6px 8px;border:1px solid var(--linha);border-radius:3px;font-family:inherit;font-size:12px;margin-bottom:5px}
+
+/* chips de placa */
+.chips{display:flex;flex-wrap:wrap;gap:5px;padding:5px;border:1px solid #d3d6de;border-radius:4px;background:#fff;min-height:38px;align-items:center}
+.chip{display:inline-flex;align-items:center;gap:5px;background:#eef1f8;color:var(--azul);border-radius:3px;padding:3px 7px;font-size:12px;font-weight:600}
+.chip button{background:none;border:0;color:var(--azul-70);cursor:pointer;font-size:13px;line-height:1;padding:0}
+.chip button:hover{color:var(--vermelho)}
+.chips input{flex:1;min-width:90px;border:0;outline:0;font-family:inherit;font-size:13px;padding:3px}
+
+.avancado{margin-top:14px;padding-top:14px;border-top:1px solid var(--linha)}
+.avancado summary{cursor:pointer;font-size:12px;font-weight:600;color:var(--azul);list-style:none}
+.avancado summary::-webkit-details-marker{display:none}
+.avancado summary::before{content:"+ ";font-weight:700}
+.avancado[open] summary::before{content:"− "}
+.avancado .grade{margin-top:14px}
+
+/* chips de filtros ativos */
+.ativos{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:11px 16px;border-top:1px solid var(--linha);background:#f7f8fc;border-radius:0 0 6px 6px}
+.ativos .rot{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--suave)}
+.tag{display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid #cfd3dc;border-radius:14px;padding:3px 9px;font-size:12px;color:var(--azul)}
+.tag button{background:none;border:0;cursor:pointer;color:#9aa0ad;font-size:13px;line-height:1;padding:0}
+.tag button:hover{color:var(--vermelho)}
+.contagem{margin-left:auto;font-size:12px;color:var(--suave)}
+.contagem strong{color:var(--azul)}
+
+/* ---------- KPIs ---------- */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:26px}
+.kpi{border:1px solid var(--linha);border-top:3px solid var(--azul);border-radius:5px;padding:14px 15px;background:#fff}
+.kpi-rot{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--suave);margin-bottom:5px}
+.kpi-val{font-size:31px;font-weight:700;color:var(--azul);line-height:1.05;display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}
+.delta{font-size:13px;font-weight:700}
+.delta.sobe{color:var(--vermelho)}
+.delta.desce{color:var(--ok)}
+.delta.igual{color:var(--suave)}
+.kpi-nota{font-size:11.5px;color:var(--suave);margin-top:5px}
+
+/* ---------- seções ---------- */
+section{margin-bottom:34px}
+section h2{font-size:18px;font-weight:700;color:var(--azul);margin-bottom:5px}
+.sub{font-size:13px;color:var(--suave);margin-bottom:14px}
+
+.cartao{border:1px solid var(--linha);border-radius:6px;padding:18px;background:#fff}
+.pareto-topo{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+.pareto-topo span{font-size:12px;font-weight:600;color:var(--suave)}
+.pareto-box{height:230px;position:relative}
+
+.insights{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:14px;margin-top:18px}
+.insight{border:1px solid var(--linha);border-left:4px solid var(--azul);border-radius:4px;padding:13px 15px;background:#fafbfc}
+.insight.p1{border-left-color:var(--vermelho)}
+.insight.p2{border-left-color:var(--laranja)}
+.insight-tipo{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--suave);margin-bottom:4px}
+.insight h3{font-size:14px;font-weight:700;color:var(--azul);margin-bottom:5px}
+.insight p{font-size:12.5px;color:#444;margin-bottom:9px}
+.insight-acoes{display:flex;gap:7px;flex-wrap:wrap}
+
+/* ---------- tabelas ---------- */
+.tabela-caixa{overflow-x:auto;border:1px solid var(--linha);border-radius:5px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead th{background:var(--azul);color:#fff;text-align:left;padding:9px 12px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap}
+tbody td{padding:9px 12px;border-bottom:1px solid var(--linha);vertical-align:middle}
+tbody tr:last-child td{border-bottom:0}
+tbody tr:nth-child(even){background:#fafbfc}
+.clicavel{cursor:pointer;transition:background .13s,box-shadow .13s}
+.clicavel:hover{background:#eef4ff!important;box-shadow:inset 3px 0 0 0 var(--azul)}
+.clicavel:hover .nome{text-decoration:underline}
+.nome{color:var(--azul);font-weight:600}
+.selecionada,.selecionada:nth-child(even){background:#eef1f8!important;box-shadow:inset 3px 0 0 0 var(--azul)}
+.badge{display:inline-block;background:var(--vermelho);color:#fff;padding:2px 8px;border-radius:3px;font-weight:700;font-size:12px}
+.diag{font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;white-space:nowrap}
+.diag-cob{background:#ffe9e9;color:#c62828}
+.diag-eqp{background:#fff3e0;color:#e07800}
+.diag-obs{background:#eef1f8;color:var(--azul)}
+.var{font-weight:700;font-size:12px}
+.vazio{text-align:center;color:#9aa0ad;padding:26px}
+.rodape-tabela{font-size:12px;color:var(--suave);margin-top:9px}
+
+/* ---------- mapa ---------- */
+.mapa-topo{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.abas{display:inline-flex;border:1px solid var(--linha);border-radius:4px;overflow:hidden}
+.aba{padding:7px 14px;background:#fff;border:0;font-family:inherit;font-size:12px;font-weight:600;color:var(--suave);cursor:pointer}
+.aba+.aba{border-left:1px solid var(--linha)}
+.aba.ativa{background:var(--azul);color:#fff}
+.mapa-grade{display:grid;grid-template-columns:1fr 300px;gap:16px;align-items:start}
+#map{width:100%;height:520px;border:1px solid var(--linha);border-radius:5px;z-index:1}
+.faixa-foco{display:none;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;padding:11px 15px;background:#eef1f8;border-left:4px solid var(--azul);border-radius:3px;font-size:13px;color:var(--azul)}
+.faixa-foco.ativa{display:flex}
+.lateral{border:1px solid var(--linha);border-radius:5px;padding:15px;background:#fafbfc}
+.lateral h3{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--suave);margin-bottom:9px}
+.ponto-nome{font-size:15px;font-weight:700;color:var(--azul);line-height:1.3}
+.ponto-sub{font-size:11.5px;color:var(--suave);margin:3px 0 12px}
+.ponto-num{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-bottom:13px}
+.ponto-num div{text-align:center;background:#fff;border:1px solid var(--linha);border-radius:4px;padding:7px 4px}
+.ponto-num b{display:block;font-size:17px;color:var(--azul);line-height:1.1}
+.ponto-num span{font-size:9.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--suave)}
+.spark{display:flex;align-items:flex-end;gap:1px;height:44px;margin:4px 0 3px}
+.spark i{flex:1;background:var(--azul);min-height:1px;border-radius:1px 1px 0 0;opacity:.75}
+.spark i.pico{background:var(--vermelho);opacity:1}
+.spark-eixo{display:flex;justify-content:space-between;font-size:9.5px;color:#9aa0ad;margin-bottom:12px}
+.legenda{font-size:12px;color:var(--suave);margin-top:10px}
+.calor-esc{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--suave);margin-top:10px}
+.calor-barra{flex:1;height:8px;border-radius:4px;background:linear-gradient(90deg,#4a6fa5,#00ff00,#ff9900,#ff3333)}
+
+/* ---------- gráficos ---------- */
+.graficos{display:grid;gap:18px}
+.gcard{border:1px solid var(--linha);border-radius:5px;padding:16px;background:#fff}
+.gcard h3{font-size:13px;font-weight:700;color:var(--azul);margin-bottom:12px}
+canvas{max-height:290px!important}
+
+/* ---------- estados ---------- */
+.inicio{text-align:center;padding:70px 20px;border:2px dashed var(--linha);border-radius:8px;background:#fafbfc}
+.inicio h2{font-size:19px;color:var(--azul);margin-bottom:8px}
+.inicio p{color:var(--suave);font-size:14px;margin-bottom:20px}
+.carregando{text-align:center;padding:60px 20px}
+.giro{width:36px;height:36px;border:3px solid var(--linha);border-top-color:var(--azul);border-radius:50%;margin:0 auto 14px;animation:g .8s linear infinite}
+@keyframes g{to{transform:rotate(360deg)}}
+#conteudo{display:none}
+
+/* mapeamento de colunas */
+.modal{display:none;position:fixed;inset:0;background:rgba(2,0,57,.55);z-index:2000;align-items:center;justify-content:center;padding:20px}
+.modal.aberto{display:flex}
+.modal-caixa{background:#fff;border-radius:7px;max-width:520px;width:100%;max-height:88vh;overflow-y:auto;padding:24px}
+.modal-caixa h3{font-size:17px;color:var(--azul);margin-bottom:6px}
+.modal-caixa .sub{margin-bottom:16px}
+.mapa-lin{display:grid;grid-template-columns:1fr auto 1.3fr;align-items:center;gap:10px;margin-bottom:10px}
+.mapa-lin span{font-size:13px;font-weight:600;color:var(--azul)}
+.modal-acoes{display:flex;gap:9px;justify-content:flex-end;margin-top:18px}
+
+.aviso{background:#fff8ef;border-left:4px solid var(--laranja);padding:11px 14px;border-radius:3px;font-size:12.5px;color:#7a4b00;margin-bottom:14px}
+
+@media (max-width:900px){
+  .mapa-grade{grid-template-columns:1fr}
+  #map{height:380px}
+}
+@media (max-width:640px){
+  .container{padding:16px 14px 40px}
+  .head-txt h1{font-size:19px}
+  .kpi-val{font-size:26px}
+  #map{height:320px}
+  .painel-corpo{padding:13px}
+  .head-acoes{width:100%}
+  .head-acoes .btn{flex:1}
+}
+
+/* ================= IMPRESSÃO ================= */
+@media print{
+  @page{size:A4 portrait;margin:15mm 13mm}
+  html,body{background:#fff;font-size:10.5pt}
+  .container,.modal{display:none!important}
+  #doc{display:block!important}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+#doc{display:none;color:#1a1a1a;font-family:'Roboto',sans-serif;line-height:1.5}
+
+.capa{height:247mm;display:flex;flex-direction:column;page-break-after:always}
+.capa-topo{display:flex;justify-content:space-between;align-items:center;padding-bottom:16px;border-bottom:3px solid #020039}
+.capa-topo svg{height:32px;width:auto}
+.capa-sel{font-size:8pt;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:#fff;background:#020039;padding:5px 12px;border-radius:2px}
+.capa-meio{flex:1;display:flex;flex-direction:column;justify-content:center}
+.capa-meio h1{font-size:26pt;font-weight:700;color:#020039;line-height:1.15;letter-spacing:-.5px;margin-bottom:8px}
+#doc .capa-meio h2{font-size:13pt;font-weight:400;color:#5a5f6d;margin:0 0 26px;border:0;padding:0}
+.capa-cli{font-size:11pt;font-weight:700;color:#020039}
+.capa-op{font-size:10pt;color:#5a5f6d;margin-bottom:4px}
+.capa-mes{font-size:15pt;font-weight:700;color:#020039;margin-top:18px}
+.capa-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:30px}
+.capa-kpi{border-top:3px solid #020039;background:#f6f7fa;padding:12px}
+.capa-kpi b{display:block;font-size:22pt;font-weight:700;color:#020039;line-height:1.05}
+.capa-kpi span{font-size:8.5pt;text-transform:uppercase;letter-spacing:.5px;color:#5a5f6d}
+.capa-pe{border-top:1px solid #d8d8d8;padding-top:10px;font-size:8pt;color:#777;display:flex;justify-content:space-between}
+
+#doc h2{font-size:12pt;font-weight:700;color:#020039;margin:20px 0 9px;padding-bottom:5px;border-bottom:2px solid #e2e2e2;page-break-after:avoid}
+#doc h3{font-size:10pt;font-weight:700;color:#020039;margin:14px 0 6px;page-break-after:avoid}
+#doc p{margin-bottom:8px;text-align:justify}
+#doc ul{margin:0 0 10px 18px}
+#doc li{margin-bottom:3px}
+#doc strong{color:#020039}
+.doc-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:12px 0 14px;page-break-inside:avoid}
+.doc-kpi{border:1px solid #d8d8d8;border-top:3px solid #020039;padding:9px;text-align:center}
+.doc-kpi b{display:block;font-size:17pt;font-weight:700;color:#020039;line-height:1.1}
+.doc-kpi span{font-size:7.5pt;text-transform:uppercase;letter-spacing:.5px;color:#666}
+#doc table{width:100%;border-collapse:collapse;font-size:8.5pt;margin:8px 0 14px;table-layout:fixed}
+#doc thead{display:table-header-group}
+#doc tr{page-break-inside:avoid}
+#doc th{line-height:1.25;background:#020039;color:#fff;font-weight:600;text-align:left;padding:6px;font-size:7.5pt;text-transform:uppercase;letter-spacing:.4px;word-break:break-word}
+#doc td{padding:4px 6px;border-bottom:1px solid #e6e6e6;vertical-align:top;word-break:break-word}
+#doc tbody tr:nth-child(even){background:#f6f7fa}
+.doc-num{display:inline-block;background:#ff3333;color:#fff;font-weight:700;padding:1px 6px;border-radius:2px;font-size:8pt}
+.doc-ponto{border-left:3px solid #020039;background:#f6f7fa;padding:8px 11px;margin-bottom:8px;font-size:8.5pt;page-break-inside:avoid}
+.doc-ponto b{font-size:9.5pt;color:#020039}
+.doc-nota{font-size:8pt;color:#666;font-style:italic;border-top:1px solid #e2e2e2;padding-top:8px;margin-top:16px}
+.quebra{page-break-before:always}
+.doc-sobe{color:#ff3333;font-weight:700}
+.doc-desce{color:#2e7d32;font-weight:700}
+</style>
+</head>
+<body>
+<div class="container">
+
+<header>
+  <svg xmlns="http://www.w3.org/2000/svg" width="98" height="30" viewBox="0 0 98 30" fill="none"><g clip-path="url(#lg)"><path d="M32.5574 5.72878C31.5806 5.72239 30.5974 5.72422 29.5612 5.72695V9.02502C29.4263 8.88182 29.3633 8.81889 29.305 8.7514C28.838 8.22057 28.3455 7.7171 27.7626 7.30849C25.5983 5.7908 23.2013 5.42141 20.6566 5.94494C15.6338 6.97741 12.25 11.7339 12.8712 17.0029C13.3591 21.1401 16.2459 24.4199 20.0602 25.4497C20.5372 25.5783 21.0288 25.6722 21.5322 25.7279L21.8351 22.6669C21.5906 22.6277 21.3517 22.5785 21.1182 22.5183C18.4157 21.826 16.4392 19.7492 15.9284 16.7731C15.6439 14.8596 16.1236 12.8548 17.4854 11.1885C19.0988 9.29773 21.2988 8.46227 23.7459 8.77511C27.1743 9.26216 29.7756 12.4444 29.6525 15.809C29.6543 16.7485 29.5731 21.1228 29.5731 21.1228C31.2851 21.1228 32.634 21.1228 32.634 21.1228C32.634 21.1228 32.6432 20.1131 32.645 18.7742C32.645 18.0427 32.6459 17.2875 32.645 16.5259C32.6422 11.3472 32.6112 5.89204 32.5583 5.7306L32.5574 5.72878Z" fill="#010031"/><path d="M43.0482 14.2932C38.5152 13.5608 38.2169 12.0796 38.1941 11.2094C38.2324 9.58412 39.9955 8.28624 42.4608 8.33184C46.162 8.43855 46.5998 10.5637 46.5998 10.5637H49.7665C48.7259 6.90444 45.0921 5.60291 42.4699 5.6704C39.3661 5.80448 35.1341 6.76763 35.2144 11.5661C35.4688 16.1766 41.3709 16.9199 43.8599 17.4015C46.3481 17.9232 47.0467 18.9274 47.0595 20.145C46.9655 22.1398 44.9316 23.1029 42.6824 23.1166C38.7477 23.0628 38.1184 21.0015 38.1184 21.0015H34.7592C36.4858 26.0206 42.7362 25.726 42.7362 25.726C46.4037 25.5254 50.1797 24.2403 50.177 20.0766C50.3256 15.6212 45.27 14.7346 43.0482 14.2913V14.2932Z" fill="#010031"/><path d="M9.00401 5.7452C7.97884 5.86559 7.02481 6.18573 6.13189 6.70744C4.99635 7.37143 4.09978 8.28168 3.34641 9.34608C3.27162 9.45188 3.12204 9.65162 3.0436 9.7556C3.0436 9.73918 3.0436 9.71091 3.0436 9.63976V7.2556C3.0436 7.2556 3.0436 7.2556 3.04269 7.2556V6.43291H0V25.7242H3.0436V25.2025C3.0436 22.1088 3.0436 19.0159 3.04542 15.9221C3.04542 15.5965 3.03995 15.2682 3.07917 14.9471C3.49234 11.5606 6.4429 8.69212 10.0666 8.73955C10.6503 8.74684 11.234 8.74228 11.8178 8.73955C11.9482 8.73955 12.0777 8.72313 12.2027 8.71492V5.67771C11.1155 5.70689 10.0593 5.62207 9.00401 5.74611V5.7452Z" fill="#010031"/><path d="M94.803 5.7452C93.7778 5.86559 92.8229 6.18573 91.9308 6.70744C90.7953 7.37143 89.8987 8.28168 89.1454 9.34608C89.0706 9.45188 88.9201 9.65162 88.8426 9.7556C88.8426 9.73918 88.8426 9.71091 88.8426 9.63976V7.2556C88.8426 7.2556 88.8426 7.2556 88.8416 7.2556V6.43291H85.798V25.7242H88.8416V25.2025C88.8416 22.1088 88.8407 19.0159 88.8435 15.9221C88.8435 15.5965 88.838 15.2682 88.8772 14.9471C89.2904 11.5606 92.241 8.69212 95.8646 8.73955C96.4484 8.74684 97.0321 8.74228 97.6158 8.73955C97.7462 8.73955 97.8758 8.72313 98.0007 8.71492V5.67771C96.9135 5.70689 95.8573 5.62207 94.8021 5.74611L94.803 5.7452Z" fill="#010031"/><path d="M21.2906 20.3311L25.2199 24.2594L21.2906 28.1886L23.102 30L28.8417 24.2594L23.102 18.5197L21.2906 20.3311Z" fill="#010031"/><path d="M81.608 9.45095C78.113 4.81578 71.515 4.39166 67.5247 8.55711C65.8483 10.3074 64.9198 12.4125 64.7082 14.8203C64.4273 18.0217 65.364 20.83 67.6843 23.0673C69.5978 24.9115 71.7841 25.8127 74.1874 25.7598C74.1874 24.4154 74.1874 23.7286 74.1874 22.6952C73.8098 22.687 73.4221 22.645 73.0254 22.5675C70.1998 22.0148 68.4468 20.446 67.7563 17.459C67.4444 15.7233 67.6642 12.5082 69.7593 10.5272C70.8309 9.51388 72.1015 8.91738 73.5726 8.77692C76.8306 8.46591 79.3589 10.5892 80.2645 13.0108H72.5976V15.8537H77.2702C78.3428 15.8537 77.2702 15.8537 83.7122 15.8309C83.7122 15.6522 83.7186 15.5172 83.7113 15.3831C83.59 13.2005 82.9324 11.2076 81.6071 9.45004L81.608 9.45095Z" fill="#010031"/><path d="M73.5753 20.3311L77.5036 24.2594L73.5753 28.1886L75.3867 30L81.1264 24.2594L75.3867 18.5197L73.5753 20.3311Z" fill="#010031"/><path d="M58.4239 2.47955e-05H55.1897V2.70707C55.1897 4.93618 53.8955 5.51626 53.2215 5.66766H51.1802V8.74501H55.353V9.31049C55.353 13.0299 55.3813 16.7485 55.3439 20.4679C55.3156 23.2808 57.7271 25.6421 60.4104 25.7352C61.2514 25.7643 62.0941 25.7461 62.936 25.7461C62.9989 25.7461 63.0618 25.7233 63.1303 25.7096V22.6989C62.9688 22.6989 62.8357 22.6989 62.7025 22.6989C62.0102 22.6989 61.317 22.7089 60.6248 22.6952C59.6762 22.677 59.0031 22.2319 58.6228 21.3545C58.4677 20.9978 58.4239 20.6248 58.4239 20.2417C58.4239 16.536 58.4239 12.8311 58.4249 9.12534C58.4249 9.01225 58.4258 8.89276 58.4258 8.74501H63.1321V5.66766H58.4239V2.47955e-05Z" fill="#010031"/></g><defs><clipPath id="lg"><rect width="98.0016" height="30" fill="#fff"/></clipPath></defs></svg>
+  <div class="head-txt">
+    <h1>Análise de Perdas de Sinal por Proximidade Geográfica</h1>
+    <p id="subCabecalho">Carregue uma planilha de exceções para gerar o relatório</p>
+  </div>
+  <div class="head-acoes">
+    <button class="btn btn-secundario" onclick="document.getElementById('arquivo').click()">Anexar mês</button>
+    <button class="btn btn-primario" id="btnPdf" onclick="exportarPDF()" disabled>Exportar PDF</button>
+  </div>
+</header>
+
+<input type="file" id="arquivo" accept=".xlsx,.xls" multiple hidden>
+
+<div class="meses" id="barraMeses"></div>
+<div id="avisoMeses"></div>
+
+<div class="inicio" id="telaInicio">
+  <h2>Nenhum mês anexado</h2>
+  <p>Cada planilha de exceções entra como um mês. O relatório usa o mês mais recente e compara com o anterior.</p>
+  <button class="btn btn-primario" onclick="document.getElementById('arquivo').click()">Selecionar planilhas</button>
+</div>
+
+<div class="carregando" id="telaCarregando" style="display:none">
+  <div class="giro"></div>
+  <p id="statusCarga">Lendo planilha...</p>
+</div>
+
+<div id="conteudo">
+
+  <!-- FILTROS -->
+  <div class="painel">
+    <div class="painel-topo">
+      <h2>Filtros</h2>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-fantasma btn-mini" onclick="restaurarPadrao()">Restaurar padrão</button>
+      </div>
+    </div>
+    <div class="painel-corpo">
+      <div class="grade">
+        <div class="campo"><label>Estado (UF)</label><div class="ms" id="msUf"></div></div>
+        <div class="campo"><label>Cidade</label><div class="ms" id="msCidade"></div></div>
+        <div class="campo"><label>Tecnologia do rastreador</label><div class="ms" id="msTecnologia"></div></div>
+        <div class="campo"><label>Vínculo</label><div class="ms" id="msVinculo"></div></div>
+        <div class="campo">
+          <label for="entradaPlaca">Placas</label>
+          <div class="chips" id="caixaPlacas"><input type="text" id="entradaPlaca" placeholder="digite e tecle Enter"></div>
+          <small>Filtra os eventos das placas listadas</small>
+        </div>
+        <div class="campo">
+          <label for="fRecorrencia">Recorrência mínima no local</label>
+          <div class="faixa"><input type="range" id="fRecorrencia" min="2" max="20" value="3"><output id="vRecorrencia">3</output></div>
+          <small>Eventos para o ponto ser crítico</small>
+        </div>
+      </div>
+
+      <details class="avancado">
+        <summary>Mais filtros</summary>
+        <div class="grade">
+          <div class="campo"><label>Proprietário</label><div class="ms" id="msProprietario"></div></div>
+          <div class="campo"><label>Tipo de exceção</label><div class="ms" id="msExcecao"></div></div>
+          <div class="campo">
+            <label for="fHoraIni">Faixa de horário</label>
+            <div class="faixa">
+              <select id="fHoraIni"></select><span style="color:#9aa0ad">até</span><select id="fHoraFim"></select>
+            </div>
+            <small>Hora do disparo do evento</small>
+          </div>
+          <div class="campo">
+            <label for="fRaio">Raio de agrupamento</label>
+            <div class="faixa"><input type="range" id="fRaio" min="0.5" max="5" step="0.5" value="2"><output id="vRaio">2 km</output></div>
+            <small>Reagrupa os pontos ao alterar</small>
+          </div>
+          <div class="campo">
+            <label for="fVeiculos">Veículos distintos (mín.)</label>
+            <div class="faixa"><input type="range" id="fVeiculos" min="1" max="20" value="1"><output id="vVeiculos">1</output></div>
+            <small>Separa ponto de rota de falha do veículo</small>
+          </div>
+          <div class="campo">
+            <label for="fBusca">Buscar local</label>
+            <input type="text" id="fBusca" placeholder="posto, rodovia, cidade...">
+          </div>
+          <div class="campo">
+            <label for="fDataIni">Período</label>
+            <div class="faixa"><input type="date" id="fDataIni"><input type="date" id="fDataFim"></div>
+            <small id="dicaPeriodo"></small>
+          </div>
+        </div>
+      </details>
+    </div>
+    <div class="ativos" id="filtrosAtivos"></div>
+  </div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <!-- ANÁLISE -->
+  <section>
+    <h2>Onde acionar primeiro</h2>
+    <p class="sub" id="subAnalise"></p>
+    <div class="cartao">
+      <div class="pareto-topo">
+        <span id="paretoTitulo">Curva de concentração dos locais</span>
+        <div class="abas">
+          <button class="aba ativa" data-pareto="locais" onclick="trocarPareto('locais')">Locais</button>
+          <button class="aba" data-pareto="veiculos" onclick="trocarPareto('veiculos')">Veículos</button>
+        </div>
+      </div>
+      <div class="pareto-box"><canvas id="gPareto"></canvas></div>
+      <p class="rodape-tabela" id="paretoLegenda"></p>
+    </div>
+    <div class="insights" id="insights"></div>
+  </section>
+
+  <!-- REGIÕES CRÍTICAS -->
+  <section>
+    <h2>Regiões críticas</h2>
+    <p class="sub" id="subCriticos"></p>
+    <div class="tabela-caixa">
+      <table>
+        <thead><tr>
+          <th>#</th><th>Local de referência</th><th>UF</th><th>Eventos</th><th>Placas</th>
+          <th>Tecnologias</th><th id="thVar">vs. anterior</th><th>Diagnóstico</th>
+        </tr></thead>
+        <tbody id="tbCriticos"></tbody>
+      </table>
+    </div>
+    <p class="rodape-tabela" id="pesCriticos"></p>
+  </section>
+
+  <!-- MAPA -->
+  <section>
+    <h2>Distribuição geográfica</h2>
+    <div class="mapa-topo">
+      <p class="sub" style="margin:0" id="subMapa"></p>
+      <div class="abas">
+        <button class="aba ativa" data-mapa="pontos" onclick="trocarMapa('pontos')">Pontos</button>
+        <button class="aba" data-mapa="calor" onclick="trocarMapa('calor')">Mapa de calor</button>
+      </div>
+    </div>
+    <div class="faixa-foco" id="faixaFoco">
+      <span id="textoFoco"></span>
+      <button class="btn btn-secundario btn-mini" onclick="limparFoco()">Mostrar todos os pontos</button>
+    </div>
+    <div class="mapa-grade">
+      <div>
+        <div id="map"></div>
+        <p class="legenda" id="legendaMapa"></p>
+        <div class="calor-esc" id="escalaCalor" style="display:none">
+          <span>menos</span><div class="calor-barra"></div><span>mais eventos</span>
+        </div>
+      </div>
+      <div class="lateral" id="lateralMapa"></div>
+    </div>
+  </section>
+
+  <!-- VEÍCULOS -->
+  <section>
+    <h2>Veículos com maior incidência</h2>
+    <p class="sub">Clique em uma placa para ver no mapa apenas os pontos onde aquele veículo perdeu sinal.</p>
+    <div class="tabela-caixa">
+      <table>
+        <thead><tr>
+          <th>Placa</th><th>Eventos</th><th>Locais distintos</th>
+          <th>Concentração no local principal</th><th>Local principal</th><th>Tecnologia</th>
+        </tr></thead>
+        <tbody id="tbVeiculos"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- GRÁFICOS -->
+  <section>
+    <h2>Análise visual</h2>
+    <div class="graficos">
+      <div class="gcard"><h3>Eventos por dia</h3><canvas id="gLinha"></canvas></div>
+      <div class="gcard"><h3>Eventos por hora do dia</h3><canvas id="gHora"></canvas></div>
+      <div class="gcard"><h3>Eventos por estado</h3><canvas id="gUf"></canvas></div>
+      <div class="gcard"><h3>Eventos por tecnologia</h3><canvas id="gTec"></canvas></div>
+    </div>
+  </section>
+
+</div>
+</div>
+
+<div class="modal" id="modalMapear">
+  <div class="modal-caixa">
+    <h3>Mapear colunas</h3>
+    <p class="sub" id="modalArquivo"></p>
+    <div id="modalCampos"></div>
+    <div class="modal-acoes">
+      <button class="btn btn-fantasma" onclick="cancelarMapeamento()">Descartar arquivo</button>
+      <button class="btn btn-primario" onclick="confirmarMapeamento()">Aplicar</button>
+    </div>
+  </div>
+</div>
+
+<div id="doc"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+<script>
+/* =========================================================
+   ESTADO
+   ========================================================= */
+const JANELA_UNIF_MIN = 60, RAIO_UNIF_KM = 1, TOP_PDF = 30;
+const FACETAS = ['uf','cidade','tecnologia','vinculo','proprietario','excecao'];
+const ROTULO_FACETA = {uf:'UF',cidade:'Cidade',tecnologia:'Tecnologia',vinculo:'Vínculo',proprietario:'Proprietário',excecao:'Exceção'};
+
+const PADRAO = {minCritical:3, raio:2, minVeiculos:1, busca:'', horaIni:0, horaFim:23,
+                dataIni:null, dataFim:null, placas:[], area:null};
+let filtros = JSON.parse(JSON.stringify(PADRAO));
+FACETAS.forEach(f => filtros[f] = []);
+
+let meses = [];              // {id, rotulo, ordem, nome, eventos[]}
+let mesAtivoId = null;
+let consolidado = null;      // todos os meses anexados, como um período único
+let dominios = {};           // faceta -> [{valor, qtd}]
+let eventosAtivos = [];      // eventos do mês ativo após as facetas (antes do agrupamento)
+let eventosRecorte = [];     // eventos efetivamente exibidos: pós-dedup e pós-filtros de local
+let baseView = [];           // mês anterior sob EXATAMENTE os mesmos filtros
+let uniqueData = [], clusteredData = [], viewData = [], criticalData = [];
+let clustersBase = [];       // mês anterior, mesmos filtros
+let localDoMes = new Map();  // evento -> agrupamento do mês INTEIRO, sem filtros
+let chaveLocalMes = '';
+let vehicleRows = [];
+let periodoDados = {min:null,max:null};
+let focoPlaca = null, pontoSel = null;
+let modoMapa = 'pontos', modoPareto = 'locais';
+let map=null, camadaPontos=null, camadaCalor=null, camadaDesenho=null, marcadores={};
+let graficos = {};
+let pendente = null;         // arquivo aguardando mapeamento de colunas
+let avisos = [];             // alertas de leitura para mostrar na tela
+
+/* =========================================================
+   UTILIDADES
+   ========================================================= */
+const R_TERRA = 6371;
+const rad = g => g * Math.PI / 180;
+
+function distanciaKm(la1, lo1, la2, lo2){
+  const dLa = rad(la2-la1), dLo = rad(lo2-lo1);
+  const a = Math.sin(dLa/2)**2 + Math.cos(rad(la1))*Math.cos(rad(la2))*Math.sin(dLo/2)**2;
+  return R_TERRA * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+const coord = c => parseFloat(c).toFixed(4);
+const idPonto = c => 'm_' + coord(c.centerLat).replace(/[.-]/g,'_') + '_' + coord(c.centerLon).replace(/[.-]/g,'_');
+const num = n => n.toLocaleString('pt-BR');
+// decimal no padrão pt-BR: 10,5 e não 10.5
+const dec = (n, casas=1) => Number(n).toLocaleString('pt-BR', {minimumFractionDigits:casas, maximumFractionDigits:casas});
+const esc = t => String(t).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function paraData(v){
+  if (v instanceof Date) return isNaN(v) ? null : v;
+  if (typeof v === 'number') return new Date(Math.round((v - 25569) * 86400 * 1000));
+  if (typeof v === 'string'){ const d = new Date(v); return isNaN(d) ? null : d; }
+  return null;
+}
+
+// UF e cidade vêm dentro do texto da referência: "... - FRANCISCO SA/MG"
+const RE_UF = /\/([A-Z]{2})\b/;
+const RE_CIDADE = /-\s*([^-\/]+?)\s*\/[A-Z]{2}\b/;
+function extrairLocal(ref){
+  const t = String(ref || '');
+  const u = RE_UF.exec(t), c = RE_CIDADE.exec(t);
+  return { uf: u ? u[1] : '—', cidade: c ? c[1].trim().toUpperCase() : '—' };
+}
+
+function pontoNaArea(la, lo, poly){
+  let dentro = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++){
+    const [ai,bi] = poly[i], [aj,bj] = poly[j];
+    if ((bi > lo) !== (bj > lo) && la < (aj-ai) * (lo-bi) / (bj-bi) + ai) dentro = !dentro;
+  }
+  return dentro;
+}
+
+/* =========================================================
+   LEITURA DE PLANILHAS
+   ========================================================= */
+const ALIAS = {
+  latitude:['latitude','lat'], longitude:['longitude','lon','lng'],
+  placa:['placa','plate'], data:['data excecao','data exceção','data evento','data'],
+  referencia:['referencia','referência','local'], excecao:['exceções','excecoes','exceção','excecao','evento'],
+  tecnologia:['tecnologia','rastreador'], vinculo:['vinculo','vínculo'],
+  proprietario:['proprietario','proprietário'], motorista:['motorista','condutor'],
+  sm:['cod viagem','sm','codigo viagem'],
+  cliente:['cliente','filial','razao social','razão social'],
+  operacao:['perfil','operacao','operação','produto']
+};
+const OBRIGATORIAS = ['latitude','longitude','placa','data'];
+
+function acharColuna(colunas, chave){
+  return colunas.find(c => ALIAS[chave].some(a => c.trim().toLowerCase() === a)) || null;
+}
+
+document.getElementById('arquivo').addEventListener('change', async e => {
+  const arquivos = Array.from(e.target.files || []);
+  e.target.value = '';
+  for (const arq of arquivos) await lerArquivo(arq);
+});
+
+async function lerArquivo(arq){
+  mostrar('carregando', `Lendo ${arq.name}...`);
+  await new Promise(r => setTimeout(r, 20));
+  try{
+    const wb = XLSX.read(new Uint8Array(await arq.arrayBuffer()), {type:'array', cellDates:true});
+    const linhas = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {defval:null});
+    if (!linhas.length) throw new Error('A planilha está vazia.');
+
+    const colunas = Object.keys(linhas[0]);
+    const mapa = {};
+    Object.keys(ALIAS).forEach(k => mapa[k] = acharColuna(colunas, k));
+    const faltando = OBRIGATORIAS.filter(k => !mapa[k]);
+
+    if (faltando.length){
+      pendente = {arq, linhas, colunas, mapa, faltando};
+      mostrar('conteudo');
+      abrirMapeamento();
+      return;
+    }
+    registrarMes(arq.name, linhas, mapa);
+  }catch(err){
+    console.error(err);
+    mostrar(meses.length ? 'conteudo' : 'inicio');
+    alert('Não foi possível ler ' + arq.name + '.\n\n' + err.message);
+  }
+}
+
+function registrarMes(nome, linhas, mapa){
+  const eventos = [];
+  for (const l of linhas){
+    const la = parseFloat(String(l[mapa.latitude]).replace(',','.'));
+    const lo = parseFloat(String(l[mapa.longitude]).replace(',','.'));
+    const placa = l[mapa.placa] ? String(l[mapa.placa]).trim().toUpperCase() : '';
+    const data = paraData(l[mapa.data]);
+    const ok = !isNaN(la) && !isNaN(lo) && la>=-90 && la<=90 && lo>=-180 && lo<=180 && !(la===0&&lo===0);
+    if (!ok || !placa || !data) continue;
+
+    const ref = mapa.referencia && l[mapa.referencia] ? String(l[mapa.referencia]) : 'Sem referência';
+    const {uf, cidade} = extrairLocal(ref);
+    eventos.push({
+      lat:la, lon:lo, placa, data, hora:data.getHours(), ref, uf, cidade,
+      tecnologia: valor(l, mapa.tecnologia), vinculo: valor(l, mapa.vinculo),
+      proprietario: valor(l, mapa.proprietario), excecao: valor(l, mapa.excecao),
+      motorista: valor(l, mapa.motorista), sm: valor(l, mapa.sm),
+      cliente: valor(l, mapa.cliente), operacao: valor(l, mapa.operacao)
+    });
+  }
+  if (!eventos.length){ alert('Nenhum registro válido em ' + nome); mostrar(meses.length?'conteudo':'inicio'); return; }
+
+  eventos.sort((a,b) => a.data - b.data);
+
+  // Um arquivo pode cobrir mais de um mês de calendário. Rotular tudo pelo mês
+  // predominante faria a comparação mensal comparar períodos diferentes, então
+  // cada mês vira uma entrada própria.
+  const grupos = new Map();
+  for (const e of eventos){
+    const k = e.data.getFullYear()*100 + (e.data.getMonth()+1);
+    if (!grupos.has(k)) grupos.set(k, []);
+    grupos.get(k).push(e);
+  }
+  const ordens = [...grupos.keys()].sort((a,b)=>a-b);
+
+  const jaExistem = ordens.filter(o => meses.some(m => m.ordem === o));
+  if (jaExistem.length){
+    const lista = jaExistem.map(o => {
+      const m = meses.find(x => x.ordem === o);
+      return `${m.rotulo} (${num(m.eventos.length)} eventos, de "${m.nome}")`;
+    }).join('\n');
+    if (!confirm(`Estes meses já estão anexados e serão substituídos:\n\n${lista}\n\nContinuar?`)){
+      mostrar('conteudo'); return;
+    }
+  }
+
+  for (const o of ordens){
+    const ev = grupos.get(o);
+    const ex = meses.find(m => m.ordem === o);
+    if (ex){ ex.eventos = ev; ex.nome = nome; }
+    else meses.push({id:'m'+o, ordem:o, rotulo:rotuloMes(o), nome, eventos:ev});
+  }
+  meses.sort((a,b) => a.ordem - b.ordem);
+  sincronizarPeriodos();
+
+  // com mais de um mês, o padrão é mostrar tudo; a comparação entra ao escolher um mês
+  mesAtivoId = meses.length > 1 ? 'todos' : meses[0].id;
+  sincronizarPeriodos();
+
+  avisos = [];
+  if (ordens.length > 1){
+    avisos.push(`"${nome}" cobre ${ordens.length} meses e foi separado em ` +
+      ordens.map(o => `${rotuloMes(o)} (${num(grupos.get(o).length)})`).join(', ') +
+      `. A visão aberta é "Todo o período"; clique em um mês para analisá-lo e compará-lo com o anterior.`);
+  } else if (meses.length > 1){
+    avisos.push(`${rotuloMes(ordens[0])} anexado. A visão aberta é "Todo o período"; clique em um mês para comparar com o anterior.`);
+  }
+
+  mostrar('conteudo');
+  montarFacetas();
+  aplicar();
+}
+
+const valor = (l,c) => c && l[c] != null && String(l[c]).trim() ? String(l[c]).trim() : '—';
+
+function rotuloMes(ord){
+  const nomes = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+  return nomes[(ord%100)-1] + '/' + String(ord).slice(2,4);
+}
+
+/* --- mapeamento manual de colunas --- */
+function abrirMapeamento(){
+  document.getElementById('modalArquivo').textContent =
+    `${pendente.arq.name} — não encontrei ${pendente.faltando.length} coluna(s) obrigatória(s).`;
+  const opcoes = ['<option value="">selecionar coluna…</option>']
+    .concat(pendente.colunas.map(c => `<option value="${esc(c)}">${esc(c)}</option>`)).join('');
+  document.getElementById('modalCampos').innerHTML = pendente.faltando.map(k =>
+    `<div class="mapa-lin"><span>${k}</span><span style="color:#9aa0ad">→</span>
+     <select data-campo="${k}">${opcoes}</select></div>`).join('');
+  document.getElementById('modalMapear').classList.add('aberto');
+}
+function cancelarMapeamento(){
+  pendente = null;
+  document.getElementById('modalMapear').classList.remove('aberto');
+  mostrar(meses.length ? 'conteudo' : 'inicio');
+}
+function confirmarMapeamento(){
+  const sels = document.querySelectorAll('#modalCampos select');
+  for (const s of sels){
+    if (!s.value){ alert('Selecione a coluna para "' + s.dataset.campo + '".'); return; }
+    pendente.mapa[s.dataset.campo] = s.value;
+  }
+  const {arq, linhas, mapa} = pendente;
+  pendente = null;
+  document.getElementById('modalMapear').classList.remove('aberto');
+  registrarMes(arq.name, linhas, mapa);
+}
+
+function mostrar(tela, msg){
+  document.getElementById('telaInicio').style.display = tela==='inicio' ? 'block':'none';
+  document.getElementById('telaCarregando').style.display = tela==='carregando' ? 'block':'none';
+  document.getElementById('conteudo').style.display = tela==='conteudo' ? 'block':'none';
+  if (msg) document.getElementById('statusCarga').textContent = msg;
+}
+
+/* =========================================================
+   DEDUPLICAÇÃO E AGRUPAMENTO
+   ========================================================= */
+function deduplicar(eventos){
+  const vistos = new Set(), base = [];
+  for (const e of eventos){
+    const k = e.placa + '|' + e.lat.toFixed(5) + '|' + e.lon.toFixed(5) + '|' + Math.floor(e.data.getTime()/60000);
+    if (vistos.has(k)) continue;
+    vistos.add(k); base.push(e);
+  }
+  return base;
+}
+
+function montarCluster(eventos, refPadrao){
+  let sLa=0, sLo=0; const placas=new Set(), tecs=new Set();
+  let ini=null, fim=null;
+  for (const e of eventos){
+    sLa+=e.lat; sLo+=e.lon; placas.add(e.placa); tecs.add(e.tecnologia);
+    if (!ini || e.data<ini) ini=e.data;
+    if (!fim || e.data>fim) fim=e.data;
+  }
+  return {
+    centerLat:sLa/eventos.length, centerLon:sLo/eventos.length,
+    reference: refPadrao || eventos[0].ref, uf: eventos[0].uf, cidade: eventos[0].cidade,
+    events: eventos, vehicles:[...placas], tecnologias:[...tecs],
+    startDate:ini, endDate:fim
+  };
+}
+
+function agrupar(eventos, raioKm){
+  const bruto = [], usado = new Uint8Array(eventos.length);
+  for (let i=0;i<eventos.length;i++){
+    if (usado[i]) continue;
+    usado[i]=1;
+    const semente = eventos[i], membros=[semente];
+    for (let j=i+1;j<eventos.length;j++){
+      if (usado[j]) continue;
+      if (distanciaKm(semente.lat, semente.lon, eventos[j].lat, eventos[j].lon) <= raioKm){
+        membros.push(eventos[j]); usado[j]=1;
+      }
+    }
+    bruto.push(montarCluster(membros, semente.ref));
+  }
+  // funde grupos cujos centros ficaram dentro do raio: sem isso o mesmo posto
+  // se parte em dois quando a semente cai na borda
+  let lista = bruto, mudou = true, voltas = 0;
+  while (mudou && voltas < 20){
+    mudou = false; voltas++;
+    lista.sort((a,b) => b.events.length - a.events.length);
+    for (let i=0;i<lista.length;i++){
+      if (!lista[i]) continue;
+      for (let j=i+1;j<lista.length;j++){
+        if (!lista[j]) continue;
+        if (distanciaKm(lista[i].centerLat,lista[i].centerLon,lista[j].centerLat,lista[j].centerLon) <= raioKm){
+          lista[i] = montarCluster(lista[i].events.concat(lista[j].events), lista[i].reference);
+          lista[j] = null; mudou = true;
+        }
+      }
+    }
+    lista = lista.filter(Boolean);
+  }
+  lista.sort((a,b) => b.events.length - a.events.length);
+  return lista;
+}
+
+/* =========================================================
+   FACETAS
+   ========================================================= */
+// A planilha pode trazer um mês, dois ou vários; não há padrão. Cada mês de
+// calendário vira um cartão e "Todo o período" reúne tudo o que foi anexado.
+function sincronizarPeriodos(){
+  const ev = meses.flatMap(m => m.eventos).sort((a,b) => a.data - b.data);
+  consolidado = meses.length > 1
+    ? {id:'todos', rotulo:'Todo o período', nome:'consolidado', eventos:ev,
+       ordem: Infinity, abrange: meses.map(m => m.rotulo)}
+    : null;
+  if (mesAtivoId === 'todos' && !consolidado) mesAtivoId = meses.length ? meses[meses.length-1].id : null;
+  chaveLocalMes = '';   // o agrupamento do período precisa ser refeito
+}
+
+function mesAtivo(){
+  if (mesAtivoId === 'todos') return consolidado;
+  return meses.find(m => m.id === mesAtivoId) || null;
+}
+// consolidado não tem "anterior": comparar um período com um mês solto enganaria
+function mesAnterior(){
+  if (mesAtivoId === 'todos') return null;
+  const i = meses.findIndex(m => m.id === mesAtivoId);
+  return i > 0 ? meses[i-1] : null;
+}
+
+function montarFacetas(){
+  const ev = mesAtivo() ? mesAtivo().eventos : [];
+  dominios = {};
+  for (const f of FACETAS){
+    const c = new Map();
+    for (const e of ev) c.set(e[f], (c.get(e[f])||0)+1);
+    dominios[f] = [...c.entries()].map(([valor,qtd])=>({valor,qtd}))
+      .sort((a,b) => b.qtd - a.qtd || String(a.valor).localeCompare(String(b.valor)));
+    filtros[f] = filtros[f].filter(v => c.has(v));
+  }
+  if (ev.length){
+    periodoDados = {min: ev[0].data, max: ev[ev.length-1].data};
+    const p = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const di = document.getElementById('fDataIni'), df = document.getElementById('fDataFim');
+    di.min = df.min = p(periodoDados.min); di.max = df.max = p(periodoDados.max);
+    document.getElementById('dicaPeriodo').textContent =
+      `${periodoDados.min.toLocaleDateString('pt-BR')} a ${periodoDados.max.toLocaleDateString('pt-BR')}`;
+  }
+  FACETAS.forEach(desenharMultiselect);
+}
+
+function passaFacetas(e, ignorar){
+  for (const f of FACETAS){
+    if (f === ignorar) continue;
+    if (filtros[f].length && !filtros[f].includes(e[f])) return false;
+  }
+  if (filtros.placas.length && !filtros.placas.includes(e.placa)) return false;
+  // 20h–06h significa atravessar a meia-noite, não um intervalo vazio
+  if (filtros.horaIni <= filtros.horaFim){
+    if (e.hora < filtros.horaIni || e.hora > filtros.horaFim) return false;
+  } else {
+    if (e.hora < filtros.horaIni && e.hora > filtros.horaFim) return false;
+  }
+  if (filtros.dataIni && e.data < filtros.dataIni) return false;
+  if (filtros.dataFim && e.data > filtros.dataFim) return false;
+  if (filtros.area && !pontoNaArea(e.lat, e.lon, filtros.area)) return false;
+  return true;
+}
+
+// Cada faceta é contada sobre o recorte dos OUTROS filtros, como em busca
+// facetada: o número ao lado do valor é quantos eventos entrariam se ele fosse
+// marcado. Sem isso o painel oferece 1.307 onde só existem 527.
+function recalcularFacetas(){
+  const mes = mesAtivo();
+  if (!mes) return;
+  for (const f of FACETAS){
+    const c = new Map();
+    for (const e of mes.eventos) if (passaFacetas(e, f)) c.set(e[f], (c.get(e[f])||0)+1);
+    for (const v of filtros[f]) if (!c.has(v)) c.set(v, 0);   // mantém o selecionado visível
+    dominios[f] = [...c.entries()].map(([valor,qtd])=>({valor,qtd}))
+      .sort((a,b) => b.qtd - a.qtd || String(a.valor).localeCompare(String(b.valor)));
+  }
+  FACETAS.forEach(desenharMultiselect);
+}
+
+/* =========================================================
+   PIPELINE
+   ========================================================= */
+let timerPesado = null;
+function aplicar(){
+  const mes = mesAtivo();
+  if (!mes) return;
+
+  eventosAtivos = mes.eventos.filter(e => passaFacetas(e));
+  recalcularFacetas();
+  uniqueData = deduplicar(eventosAtivos);
+  clusteredData = agrupar(uniqueData, filtros.raio);
+
+  const busca = filtros.busca.trim().toLowerCase();
+  viewData = clusteredData.filter(c =>
+    c.vehicles.length >= filtros.minVeiculos &&
+    (!busca || c.reference.toLowerCase().includes(busca)));
+  criticalData = viewData.filter(c => c.events.length >= filtros.minCritical);
+
+  // os eventos que realmente sustentam tudo que é exibido
+  eventosRecorte = viewData.flatMap(c => c.events);
+
+  // o mês anterior passa pelo MESMO pipeline, senão a variação compara coisas diferentes
+  const ant = mesAnterior();
+  clustersBase = ant ? agrupar(deduplicar(ant.eventos.filter(e => passaFacetas(e))), filtros.raio) : [];
+  baseView = clustersBase.filter(c =>
+    c.vehicles.length >= filtros.minVeiculos &&
+    (!busca || c.reference.toLowerCase().includes(busca)));
+  casarComBase();
+
+  if (focoPlaca && !viewData.some(c => c.vehicles.includes(focoPlaca))) focoPlaca = null;
+  if (pontoSel && !viewData.some(c => idPonto(c) === pontoSel)) pontoSel = null;
+
+  calcularVeiculos();
+  renderKpis();
+  renderChipsAtivos();
+  renderCriticos();
+  renderVeiculos();
+
+  clearTimeout(timerPesado);
+  timerPesado = setTimeout(() => {
+    renderMapa(); renderPareto(); renderInsights(); renderGraficos(); renderLateral();
+  }, 120);
+}
+
+// Casa cada ponto do mês atual com no máximo UM ponto do mês anterior.
+// Sem a exclusividade, um local que se partiu em dois neste mês compararia
+// os dois pedaços contra a mesma base e inflaria a variação.
+function casarComBase(){
+  if (!baseView.length){ viewData.forEach(c => c.variacao = null); return; }
+
+  const usados = new Set();
+  const ordem = viewData.slice().sort((a,b) => b.events.length - a.events.length);
+  for (const c of ordem){
+    let melhor = null, dist = Infinity, idx = -1;
+    baseView.forEach((b,i) => {
+      if (usados.has(i)) return;
+      const d = distanciaKm(c.centerLat, c.centerLon, b.centerLat, b.centerLon);
+      if (d < dist){ dist = d; melhor = b; idx = i; }
+    });
+    if (!melhor || dist > filtros.raio){
+      c.variacao = {novo:true, delta:c.events.length, anterior:0};
+    } else {
+      usados.add(idx);
+      c.variacao = {novo:false, delta:c.events.length - melhor.events.length, anterior:melhor.events.length};
+    }
+  }
+}
+
+// "Local exclusivo de uma placa" tem de ser propriedade do mês, não do recorte:
+// se as outras placas foram excluídas por um filtro, o local não virou exclusivo.
+// Este agrupamento ignora as facetas e só é refeito ao trocar de mês ou de raio.
+function garantirLocaisDoMes(){
+  const mes = mesAtivo();
+  if (!mes) return;
+  const chave = mes.id + '|' + filtros.raio;
+  if (chave === chaveLocalMes) return;
+  const todos = agrupar(deduplicar(mes.eventos), filtros.raio);
+  localDoMes = new Map();
+  for (const c of todos) for (const e of c.events) localDoMes.set(e, c);
+  chaveLocalMes = chave;
+}
+
+function calcularVeiculos(){
+  garantirLocaisDoMes();
+  const porPlaca = new Map();
+  for (const c of viewData){
+    const id = idPonto(c);
+    for (const e of c.events){
+      let v = porPlaca.get(e.placa);
+      if (!v){ v = {placa:e.placa, total:0, locais:new Map(), tec:e.tecnologia, sozinho:0}; porPlaca.set(e.placa, v); }
+      v.total++;
+      const noMes = localDoMes.get(e);
+      const soDela = !!noMes && noMes.vehicles.length === 1;
+      const at = v.locais.get(id);
+      if (at) at.qtd++;
+      else v.locais.set(id, {nome:c.reference, qtd:1, exclusivo:soDela});
+    }
+  }
+  vehicleRows = [...porPlaca.values()].map(v => {
+    const locais = [...v.locais.values()].sort((a,b)=>b.qtd-a.qtd);
+    const principal = locais[0];
+    const exclusivos = locais.filter(l => l.exclusivo).reduce((s,l)=>s+l.qtd,0);
+    return {placa:v.placa, total:v.total, locaisDistintos:locais.length, tec:v.tec,
+            principalNome:principal.nome, principalQtd:principal.qtd,
+            concentracao: Math.round(principal.qtd / v.total * 100),
+            exclusivos, pctExclusivo: Math.round(exclusivos / v.total * 100)};
+  }).sort((a,b) => b.total - a.total || b.concentracao - a.concentracao);
+}
+
+// Equipamentos de fabricantes diferentes falhando no mesmo ponto apontam para o
+// local, não para o veículo. Três tecnologias já bastam, mesmo com poucas placas.
+function diagnostico(c){
+  if (c.tecnologias.length >= 3 || (c.vehicles.length >= 5 && c.tecnologias.length >= 2))
+    return {classe:'diag-cob', texto:'Sombra de cobertura'};
+  if (c.vehicles.length <= 2 && c.tecnologias.length === 1)
+    return {classe:'diag-eqp', texto:'Poucas placas · verificar'};
+  return {classe:'diag-obs', texto:'Em observação'};
+}
+/* =========================================================
+   BARRA DE MESES
+   ========================================================= */
+function renderMeses(){
+  const barra = document.getElementById('barraMeses');
+  if (!meses.length){ barra.innerHTML = ''; return; }
+  const ativo = mesAtivo(), base = mesAnterior();
+
+  const cartaoTodos = consolidado ? `
+    <div class="mes ${mesAtivoId==='todos'?'ativo':''}" onclick="trocarMes('todos')"
+         title="${esc(consolidado.abrange.join(', '))}">
+      <div class="mes-rot">Todo o período</div>
+      <div class="mes-val">${num(consolidado.eventos.length)}</div>
+      <div class="mes-tag">${consolidado.abrange.length} meses</div>
+    </div>` : '';
+
+  barra.innerHTML = cartaoTodos + meses.map(m => {
+    const cls = m.id===mesAtivoId ? 'mes ativo' : (base && m.id===base.id ? 'mes base' : 'mes');
+    const tag = m.id===mesAtivoId ? 'em análise' : (base && m.id===base.id ? 'comparação' : '');
+    return `<div class="${cls}" onclick="trocarMes('${m.id}')" title="${esc(m.nome)}">
+      <button class="mes-x" onclick="event.stopPropagation();removerMes('${m.id}')" title="Remover">×</button>
+      <div class="mes-rot">${m.rotulo}</div>
+      <div class="mes-val">${num(m.eventos.length)}</div>
+      <div class="mes-tag">${tag}</div></div>`;
+  }).join('') + `<div class="mes-add" onclick="document.getElementById('arquivo').click()">+ anexar .xlsx</div>`;
+
+  const cxAviso = document.getElementById('avisoMeses');
+  cxAviso.innerHTML = avisos.map(a => `<div class="aviso">${esc(a)}</div>`).join('');
+
+  const de = ativo.eventos[0].data.toLocaleDateString('pt-BR');
+  const ate = ativo.eventos[ativo.eventos.length-1].data.toLocaleDateString('pt-BR');
+  document.getElementById('subCabecalho').textContent =
+    `${ativo.rotulo} · ${de} a ${ate} · ${num(ativo.eventos.length)} eventos · ${new Set(ativo.eventos.map(e=>e.placa)).size} placas` +
+    (base ? ` · comparando com ${base.rotulo}`
+          : (consolidado ? ' · escolha um mês para comparar com o anterior' : ' · anexe outro mês para comparar'));
+  document.getElementById('btnPdf').disabled = false;
+}
+function trocarMes(id){ mesAtivoId = id; focoPlaca=null; pontoSel=null; chaveLocalMes=''; montarFacetas(); aplicar(); }
+function removerMes(id){
+  meses = meses.filter(m => m.id !== id);
+  if (!meses.length){ consolidado=null; mesAtivoId=null; mostrar('inicio'); renderMeses(); return; }
+  sincronizarPeriodos();
+  if (mesAtivoId === id) mesAtivoId = consolidado ? 'todos' : meses[meses.length-1].id;
+  sincronizarPeriodos();
+  montarFacetas(); aplicar();
+}
+
+/* =========================================================
+   MULTISELECT DE FACETA
+   ========================================================= */
+function desenharMultiselect(faceta){
+  const cx = document.getElementById('ms' + faceta[0].toUpperCase() + faceta.slice(1));
+  if (!cx) return;
+  const dom = dominios[faceta] || [], sel = filtros[faceta];
+  const rotulo = sel.length===0 ? `Todos (${dom.length})` : (sel.length<=2 ? sel.join(', ') : `${sel.length} selecionados`);
+  const precisaBusca = dom.length > 12;
+
+  cx.innerHTML = `
+    <button type="button" class="ms-botao">
+      <span>${esc(rotulo)}</span>${sel.length?`<span class="ms-cont">${sel.length}</span>`:'<span style="color:#9aa0ad">&#9662;</span>'}
+    </button>
+    <div class="ms-lista">
+      ${precisaBusca?`<input class="ms-busca" placeholder="filtrar...">`:''}
+      ${dom.map(d=>`<label class="ms-item" data-v="${esc(String(d.valor).toLowerCase())}">
+        <input type="checkbox" ${sel.includes(d.valor)?'checked':''} data-valor="${esc(d.valor)}">
+        <span>${esc(d.valor)}</span><span class="qtd">${num(d.qtd)}</span></label>`).join('')}
+    </div>`;
+
+  cx.querySelector('.ms-botao').addEventListener('click', function(){
+    const aberto = cx.classList.contains('aberto');
+    document.querySelectorAll('.ms.aberto').forEach(x=>{ x.classList.remove('aberto'); x.dataset.aberto='0'; });
+    if (!aberto){ cx.classList.add('aberto'); cx.dataset.aberto='1'; }
+  });
+  const busca = cx.querySelector('.ms-busca');
+  if (busca) busca.addEventListener('input', function(){
+    const t = this.value.toLowerCase();
+    cx.querySelectorAll('.ms-item').forEach(i => i.style.display = i.dataset.v.includes(t) ? 'flex' : 'none');
+  });
+  cx.querySelectorAll('.ms-item input').forEach(inp => {
+    inp.addEventListener('change', () => marcarFaceta(faceta, inp.checked, inp.dataset.valor));
+  });
+  // a lista é redesenhada a cada marcação; sem isso ela fecharia a cada clique
+  if (cx.dataset.aberto === '1') cx.classList.add('aberto');
+}
+function marcarFaceta(faceta, marcado, valor){
+  if (marcado){ if(!filtros[faceta].includes(valor)) filtros[faceta].push(valor); }
+  else filtros[faceta] = filtros[faceta].filter(v => v !== valor);
+  desenharMultiselect(faceta);
+  aplicar();
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('.ms'))
+    document.querySelectorAll('.ms.aberto').forEach(x=>{ x.classList.remove('aberto'); x.dataset.aberto='0'; });
+});
+
+/* =========================================================
+   CHIPS DE PLACA
+   ========================================================= */
+function renderPlacas(){
+  const cx = document.getElementById('caixaPlacas');
+  cx.querySelectorAll('.chip').forEach(c=>c.remove());
+  const inp = document.getElementById('entradaPlaca');
+  filtros.placas.forEach(p => {
+    const c = document.createElement('span');
+    c.className = 'chip';
+    c.innerHTML = `${esc(p)}<button type="button" title="Remover">×</button>`;
+    c.querySelector('button').onclick = () => { filtros.placas = filtros.placas.filter(x=>x!==p); renderPlacas(); aplicar(); };
+    cx.insertBefore(c, inp);
+  });
+}
+document.getElementById('entradaPlaca').addEventListener('keydown', e => {
+  if (e.key !== 'Enter' && e.key !== ',') return;
+  e.preventDefault();
+  const v = e.target.value.trim().toUpperCase();
+  if (v && !filtros.placas.includes(v)) filtros.placas.push(v);
+  e.target.value = '';
+  renderPlacas(); aplicar();
+});
+
+/* =========================================================
+   FILTROS ATIVOS
+   ========================================================= */
+function renderChipsAtivos(){
+  const tags = [];
+  const tag = (texto, limpar) => `<span class="tag">${esc(texto)}<button onclick="${limpar}">×</button></span>`;
+  for (const f of FACETAS) if (filtros[f].length)
+    tags.push(tag(`${ROTULO_FACETA[f]}: ${filtros[f].slice(0,3).join(', ')}${filtros[f].length>3?` +${filtros[f].length-3}`:''}`, `limparFaceta('${f}')`));
+  if (filtros.placas.length) tags.push(tag(`${filtros.placas.length} placa(s)`, `limparCampo('placas')`));
+  if (filtros.minCritical !== PADRAO.minCritical) tags.push(tag(`≥ ${filtros.minCritical} eventos`, `limparCampo('minCritical')`));
+  if (filtros.minVeiculos !== PADRAO.minVeiculos) tags.push(tag(`≥ ${filtros.minVeiculos} veículos`, `limparCampo('minVeiculos')`));
+  if (filtros.raio !== PADRAO.raio) tags.push(tag(`raio ${filtros.raio} km`, `limparCampo('raio')`));
+  if (filtros.horaIni !== 0 || filtros.horaFim !== 23)
+    tags.push(tag(`${String(filtros.horaIni).padStart(2,'0')}h–${String(filtros.horaFim).padStart(2,'0')}h` +
+      (filtros.horaIni > filtros.horaFim ? ' (vira o dia)' : ''), `limparCampo('hora')`));
+  if (filtros.busca.trim()) tags.push(tag(`"${filtros.busca.trim()}"`, `limparCampo('busca')`));
+  if (filtros.dataIni || filtros.dataFim) tags.push(tag('período recortado', `limparCampo('data')`));
+  if (filtros.area) tags.push(tag('área desenhada', `limparCampo('area')`));
+
+  const total = mesAtivo() ? mesAtivo().eventos.length : 0;
+  document.getElementById('filtrosAtivos').innerHTML =
+    (tags.length
+      ? `<span class="rot">Filtros ativos</span>${tags.join('')}<button class="btn btn-fantasma btn-mini" onclick="restaurarPadrao()">Limpar tudo</button>`
+      : `<span class="rot">Nenhum filtro aplicado</span>`) +
+    `<span class="contagem">Mostrando <strong>${num(eventosRecorte.length)}</strong> de ${num(total)} eventos · <strong>${num(viewData.length)}</strong> locais</span>`;
+}
+function limparFaceta(f){ filtros[f] = []; desenharMultiselect(f); aplicar(); }
+function limparCampo(c){
+  if (c==='placas'){ filtros.placas=[]; renderPlacas(); }
+  else if (c==='hora'){ filtros.horaIni=0; filtros.horaFim=23; sincronizarControles(); }
+  else if (c==='data'){ filtros.dataIni=filtros.dataFim=null; sincronizarControles(); }
+  else if (c==='area'){ filtros.area=null; if(camadaDesenho) camadaDesenho.clearLayers(); }
+  else if (c==='busca'){ filtros.busca=''; sincronizarControles(); renderLateral(); }
+  else { filtros[c]=PADRAO[c]; sincronizarControles(); }
+  aplicar();
+}
+function restaurarPadrao(){
+  const raioAntes = filtros.raio;
+  filtros = JSON.parse(JSON.stringify(PADRAO));
+  FACETAS.forEach(f => filtros[f]=[]);
+  focoPlaca = null; pontoSel = null;
+  if (camadaDesenho) camadaDesenho.clearLayers();
+  FACETAS.forEach(desenharMultiselect);
+  renderPlacas(); sincronizarControles();
+  aplicar();
+}
+function sincronizarControles(){
+  document.getElementById('fRecorrencia').value = filtros.minCritical;
+  document.getElementById('vRecorrencia').textContent = filtros.minCritical;
+  document.getElementById('fRaio').value = filtros.raio;
+  document.getElementById('vRaio').textContent = filtros.raio + ' km';
+  document.getElementById('fVeiculos').value = filtros.minVeiculos;
+  document.getElementById('vVeiculos').textContent = filtros.minVeiculos;
+  document.getElementById('fBusca').value = filtros.busca;
+  document.getElementById('fHoraIni').value = filtros.horaIni;
+  document.getElementById('fHoraFim').value = filtros.horaFim;
+  const iso = d => d ? `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` : '';
+  document.getElementById('fDataIni').value = iso(filtros.dataIni);
+  document.getElementById('fDataFim').value = iso(filtros.dataFim);
+}
+
+/* =========================================================
+   KPIs
+   ========================================================= */
+function delta(atual, anterior, inverso){
+  if (anterior === null || anterior === undefined) return '';
+  const d = atual - anterior;
+  if (!anterior) return d ? `<span class="delta sobe">novo</span>` : '';
+  const pct = Math.round(d / anterior * 100);
+  if (d === 0) return `<span class="delta igual">— 0%</span>`;
+  const sobe = inverso ? d < 0 : d > 0;
+  return `<span class="delta ${sobe?'sobe':'desce'}">${d>0?'▲':'▼'} ${Math.abs(pct)}%</span>`;
+}
+
+function renderKpis(){
+  const ant = mesAnterior();
+  const temBase = !!ant;
+  const somaEv = a => a.reduce((s,c)=>s+c.events.length,0);
+
+  // tudo do mês anterior sai de baseView, que passou pelos mesmos filtros do atual
+  const eventos    = somaEv(viewData);
+  const eventosAnt = temBase ? somaEv(baseView) : null;
+  const criticos   = criticalData.length;
+  const criticosAnt= temBase ? baseView.filter(c => c.events.length >= filtros.minCritical).length : null;
+  const veic       = new Set(viewData.flatMap(c=>c.vehicles)).size;
+  const veicAnt    = temBase ? new Set(baseView.flatMap(c=>c.vehicles)).size : null;
+  const novos      = criticalData.filter(c => c.variacao && c.variacao.novo).length;
+
+  // fatia dos locais que responde por 80% dos eventos
+  const vals = viewData.map(c=>c.events.length).sort((a,b)=>b-a);
+  let acc=0, k=0;
+  for (const v of vals){ acc+=v; k++; if (acc >= eventos*0.8) break; }
+  const pareto = viewData.length ? Math.round(k/viewData.length*100) : 0;
+  const frota = mesAtivo() ? new Set(mesAtivo().eventos.map(e=>e.placa)).size : 0;
+
+  document.getElementById('kpis').innerHTML = `
+    <div class="kpi"><div class="kpi-rot">Eventos no recorte</div>
+      <div class="kpi-val">${num(eventos)}${delta(eventos, eventosAnt)}</div>
+      <div class="kpi-nota">${temBase?`vs. ${num(eventosAnt)} em ${ant.rotulo}, no mesmo recorte`:'sem mês de comparação'}</div></div>
+    <div class="kpi"><div class="kpi-rot">Pontos críticos (≥${filtros.minCritical})</div>
+      <div class="kpi-val">${num(criticos)}${temBase?delta(criticos, criticosAnt):''}</div>
+      <div class="kpi-nota">${temBase?`${novos} sem equivalente em ${ant.rotulo}`:'anexe o mês anterior para comparar'}</div></div>
+    <div class="kpi"><div class="kpi-rot">Veículos envolvidos</div>
+      <div class="kpi-val">${num(veic)}${delta(veic, veicAnt)}</div>
+      <div class="kpi-nota">de ${num(frota)} placas com evento no mês</div></div>
+    <div class="kpi"><div class="kpi-rot">Concentração (Pareto)</div>
+      <div class="kpi-val">${pareto}%</div>
+      <div class="kpi-nota">dos locais somam 80% dos eventos</div></div>`;
+}
+
+/* =========================================================
+   TABELA DE REGIÕES CRÍTICAS
+   ========================================================= */
+function renderCriticos(){
+  const tb = document.getElementById('tbCriticos');
+  document.getElementById('thVar').textContent = mesAnterior() ? `vs. ${mesAnterior().rotulo}` : 'vs. anterior';
+  document.getElementById('subCriticos').textContent =
+    `Locais com ${filtros.minCritical} ou mais ocorrências, ordenados por recorrência. Clique para ver no mapa.`;
+
+  if (!criticalData.length){
+    tb.innerHTML = '<tr><td colspan="8" class="vazio">Nenhum ponto atende aos critérios atuais</td></tr>';
+    document.getElementById('pesCriticos').textContent = '';
+    return;
+  }
+  const lista = criticalData.slice(0, 25);
+  const frag = document.createDocumentFragment();
+  lista.forEach((c,i) => {
+    const d = diagnostico(c), id = idPonto(c);
+    const tr = document.createElement('tr');
+    tr.className = 'clicavel' + (pontoSel===id?' selecionada':'');
+    tr.innerHTML = `<td>${i+1}</td>
+      <td><span class="nome">${esc(c.reference)}</span></td>
+      <td>${esc(c.uf)}</td>
+      <td><span class="badge">${c.events.length}</span></td>
+      <td>${c.vehicles.length}</td>
+      <td>${c.tecnologias.length}</td>
+      <td>${textoVariacao(c.variacao)}</td>
+      <td><span class="diag ${d.classe}">${d.texto}</span></td>`;
+    tr.addEventListener('click', () => selecionarPonto(id));
+    frag.appendChild(tr);
+  });
+  tb.innerHTML = ''; tb.appendChild(frag);
+  document.getElementById('pesCriticos').textContent = criticalData.length > 25
+    ? `Exibindo os 25 primeiros de ${num(criticalData.length)} pontos críticos. O PDF traz os ${TOP_PDF} maiores.`
+    : `${criticalData.length} ponto(s) crítico(s) no recorte.`;
+}
+function textoVariacao(v){
+  if (!v) return '<span style="color:#9aa0ad">—</span>';
+  if (v.novo) return '<span class="var" style="color:#ff3333">novo</span>';
+  if (v.delta === 0) return '<span class="var" style="color:#6a6f7d">— 0</span>';
+  return `<span class="var" style="color:${v.delta>0?'#ff3333':'#2e7d32'}">${v.delta>0?'▲':'▼'} ${Math.abs(v.delta)}</span>`;
+}
+
+/* =========================================================
+   TABELA DE VEÍCULOS
+   ========================================================= */
+function renderVeiculos(){
+  const tb = document.getElementById('tbVeiculos');
+  if (!vehicleRows.length){
+    tb.innerHTML = '<tr><td colspan="6" class="vazio">Nenhum veículo no recorte</td></tr>';
+    return;
+  }
+  const frag = document.createDocumentFragment();
+  vehicleRows.slice(0,15).forEach(v => {
+    const forte = v.total>=3 && v.concentracao>=60;
+    const tr = document.createElement('tr');
+    tr.className = 'clicavel' + (focoPlaca===v.placa?' selecionada':'');
+    tr.dataset.placa = v.placa;
+    tr.title = 'Clique para ver os pontos deste veículo no mapa';
+    tr.innerHTML = `<td><span class="nome">${esc(v.placa)}</span></td>
+      <td>${v.total}</td><td>${v.locaisDistintos}</td>
+      <td${forte?' style="color:#ff3333;font-weight:700"':''}>${v.concentracao}%</td>
+      <td>${esc(v.principalNome)} <span style="color:#9aa0ad">(${v.principalQtd})</span></td>
+      <td>${esc(v.tec)}</td>`;
+    tr.addEventListener('click', () => focarPlaca(v.placa));
+    frag.appendChild(tr);
+  });
+  tb.innerHTML = ''; tb.appendChild(frag);
+}
+/* =========================================================
+   MAPA
+   ========================================================= */
+function iniciarMapa(){
+  if (map) return;
+  map = L.map('map').setView([-15,-51], 4);
+
+  // O tile padrão do OpenStreetMap recusa requisições de páginas abertas como
+  // arquivo local (403 "access denied" ao dar zoom). O basemap do CARTO permite,
+  // e o cinza-claro combina melhor com o relatório. Se falhar, cai no OSM.
+  let trocou = false;
+  const base = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    subdomains:'abcd', maxZoom:19, crossOrigin:true,
+    attribution:'© OpenStreetMap · © CARTO'
+  }).addTo(map);
+  base.on('tileerror', () => {
+    if (trocou) return;
+    trocou = true;
+    map.removeLayer(base);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+      {maxZoom:19, attribution:'© OpenStreetMap'}).addTo(map);
+  });
+  camadaPontos = L.layerGroup().addTo(map);
+  camadaDesenho = new L.FeatureGroup().addTo(map);
+
+  if (L.Control && L.Control.Draw){
+    map.addControl(new L.Control.Draw({
+      draw:{polygon:{shapeOptions:{color:'#020039',weight:2}}, rectangle:{shapeOptions:{color:'#020039',weight:2}},
+            polyline:false, circle:false, marker:false, circlemarker:false},
+      edit:{featureGroup:camadaDesenho, remove:true}
+    }));
+    const lerArea = layer => layer.getLatLngs()[0].map(p => [p.lat, p.lng]);
+
+    map.on(L.Draw.Event.CREATED, e => {
+      camadaDesenho.clearLayers();
+      camadaDesenho.addLayer(e.layer);
+      filtros.area = lerArea(e.layer);
+      aplicar();
+    });
+
+    // sem isto, apagar o polígono pela lixeira deixava o filtro de área ativo
+    map.on(L.Draw.Event.DELETED, () => {
+      if (camadaDesenho.getLayers().length === 0){ filtros.area = null; aplicar(); }
+    });
+    map.on(L.Draw.Event.EDITED, e => {
+      const l = e.layers.getLayers()[0];
+      filtros.area = l ? lerArea(l) : null;
+      aplicar();
+    });
+  }
+}
+
+function renderMapa(){
+  iniciarMapa();
+  camadaPontos.clearLayers();
+  if (camadaCalor){ map.removeLayer(camadaCalor); camadaCalor = null; }
+  marcadores = {};
+
+  const pontos = focoPlaca ? viewData.filter(c => c.vehicles.includes(focoPlaca)) : viewData;
+  const limites = [];
+
+  if (modoMapa === 'calor'){
+    if (!L.heatLayer){
+      modoMapa = 'pontos';
+      document.querySelectorAll('[data-mapa]').forEach(b => b.classList.toggle('ativa', b.dataset.mapa==='pontos'));
+      document.getElementById('legendaMapa').textContent =
+        'Não foi possível carregar a camada de calor. Verifique a conexão e tente novamente.';
+      return renderMapa();
+    }
+    // Normalizar pelo maior ponto deixava quase tudo invisível: com um pico de 38
+    // eventos, um local de 3 ficava em 0,08 de intensidade. O teto passa a ser o
+    // percentil 90, então a massa do mapa ocupa a faixa visível da escala.
+    const ordenados = pontos.map(c=>c.events.length).sort((a,b)=>a-b);
+    const teto = Math.max(2, ordenados[Math.floor(ordenados.length*0.9)] || 2);
+    const dados = pontos.map(c => [c.centerLat, c.centerLon, Math.min(1, c.events.length/teto)]);
+    if (dados.length){
+      camadaCalor = L.heatLayer(dados, {
+        radius:24, blur:18, minOpacity:0.35, max:1.0,
+        gradient:{0.0:'#4a6fa5', 0.35:'#00c2ff', 0.6:'#00ff00', 0.8:'#ff9900', 1:'#ff3333'}
+      }).addTo(map);
+    }
+    pontos.forEach(c => limites.push([c.centerLat, c.centerLon]));
+  } else {
+    for (const c of pontos){
+      const qtd = focoPlaca ? c.events.filter(e=>e.placa===focoPlaca).length : c.events.length;
+      const critico = c.events.length >= filtros.minCritical;
+      const cor = focoPlaca ? '#020039' : (critico ? '#ff3333' : '#ff9900');
+      const tam = qtd>=20?42:qtd>=10?37:31;
+      const id = idPonto(c);
+      const sel = pontoSel === id;
+      const icone = L.divIcon({
+        html:`<div style="background:${cor};width:${tam}px;height:${tam}px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:13px;border:${sel?'3px solid #00ff00':'2px solid #fff'};box-shadow:0 2px 6px rgba(0,0,0,.3)">${qtd}</div>`,
+        className:'', iconSize:[tam,tam], iconAnchor:[tam/2,tam/2]
+      });
+      const m = L.marker([c.centerLat,c.centerLon],{icon:icone}).addTo(camadaPontos);
+      m.on('click', () => selecionarPonto(id, false));
+      marcadores[id] = m;
+      limites.push([c.centerLat,c.centerLon]);
+    }
+  }
+
+  if (limites.length && !pontoSel) map.fitBounds(limites,{padding:[40,40],maxZoom:12});
+  setTimeout(()=>map.invalidateSize(),80);
+
+  document.getElementById('escalaCalor').style.display = modoMapa==='calor'?'flex':'none';
+  const criticos = pontos.filter(c=>c.events.length>=filtros.minCritical).length;
+  document.getElementById('legendaMapa').innerHTML = focoPlaca
+    ? `Exibindo apenas <strong>${esc(focoPlaca)}</strong> — ${pontos.length} local(is)`
+    : (modoMapa==='calor'
+       ? `Densidade de ${num(pontos.length)} locais. Áreas mais quentes concentram mais eventos; a escala satura nos pontos de maior recorrência.`
+       : `Vermelho = ponto crítico (${criticos}) · laranja = abaixo do limite · ${num(pontos.length)} pontos no mapa`);
+  document.getElementById('subMapa').textContent = filtros.area
+    ? 'Área desenhada aplicada como filtro. Use "Limpar tudo" ou o chip para remover.'
+    : 'Desenhe um polígono ou retângulo no mapa para filtrar por área.';
+  atualizarFaixaFoco();
+}
+
+function trocarMapa(modo){
+  modoMapa = modo;
+  document.querySelectorAll('[data-mapa]').forEach(b => b.classList.toggle('ativa', b.dataset.mapa===modo));
+  renderMapa();
+}
+
+function selecionarPonto(id, mover=true){
+  pontoSel = pontoSel === id ? null : id;
+  renderCriticos(); renderMapa(); renderLateral();
+  if (pontoSel && mover && marcadores[pontoSel]){
+    document.getElementById('map').scrollIntoView({behavior:'smooth',block:'center'});
+    setTimeout(()=>map.setView(marcadores[pontoSel].getLatLng(), 13, {animate:true}), 320);
+  }
+}
+
+function renderLateral(){
+  const cx = document.getElementById('lateralMapa');
+  const c = viewData.find(x => idPonto(x) === pontoSel);
+  if (!c){
+    cx.innerHTML = `<h3>Ponto selecionado</h3><p style="font-size:12.5px;color:#6a6f7d">
+      Clique em um marcador do mapa ou em uma linha da tabela para ver o detalhe do local aqui.</p>`;
+    return;
+  }
+  const porHora = new Array(24).fill(0);
+  c.events.forEach(e => porHora[e.hora]++);
+  const max = Math.max(...porHora);
+  const pico = porHora.indexOf(max);
+  const d = diagnostico(c);
+  const placas = [...new Set(c.events.map(e=>e.placa))].slice(0,8);
+
+  cx.innerHTML = `<h3>Ponto selecionado</h3>
+    <div class="ponto-nome">${esc(c.reference)}</div>
+    <div class="ponto-sub">${esc(c.cidade)}/${esc(c.uf)} · ${coord(c.centerLat)}, ${coord(c.centerLon)}</div>
+    <div class="ponto-num">
+      <div><b>${c.events.length}</b><span>Eventos</span></div>
+      <div><b>${c.vehicles.length}</b><span>Placas</span></div>
+      <div><b>${c.tecnologias.length}</b><span>Tecn.</span></div>
+    </div>
+    <span class="diag ${d.classe}">${d.texto}</span>
+    <div style="margin-top:13px"><h3>Eventos por hora</h3>
+      <div class="spark">${porHora.map((v,h)=>`<i class="${h===pico&&max>0?'pico':''}" style="height:${max?Math.max(2,v/max*100):2}%" title="${h}h: ${v}"></i>`).join('')}</div>
+      <div class="spark-eixo"><span>00h</span><span>12h</span><span>23h</span></div>
+    </div>
+    <div style="font-size:12px;color:#6a6f7d;margin-bottom:12px">
+      <strong style="color:#020039">Placas:</strong> ${placas.map(esc).join(', ')}${c.vehicles.length>8?` +${c.vehicles.length-8}`:''}
+    </div>
+    ${filtrandoPorEstePonto(c)
+      ? `<button class="btn btn-primario btn-mini" data-acao="desfiltrar" style="width:100%;margin-bottom:6px">Remover o filtro deste ponto</button>`
+      : `<button class="btn btn-secundario btn-mini" data-acao="filtrar" style="width:100%;margin-bottom:6px">Filtrar tudo por este ponto</button>`}
+    <button class="btn btn-fantasma btn-mini" data-acao="fechar" style="width:100%">Fechar detalhe</button>`;
+
+  const id = pontoSel;
+  cx.querySelectorAll('[data-acao]').forEach(b => b.addEventListener('click', () => {
+    if (b.dataset.acao === 'filtrar') filtrarPorPonto();
+    else if (b.dataset.acao === 'desfiltrar') limparCampo('busca');
+    else selecionarPonto(id);
+  }));
+}
+
+function filtrandoPorEstePonto(c){
+  return !!filtros.busca.trim() && filtros.busca.trim() === c.reference.trim();
+}
+function filtrarPorPonto(){
+  const c = viewData.find(x => idPonto(x) === pontoSel);
+  if (!c) return;
+  filtros.busca = c.reference;
+  document.getElementById('fBusca').value = c.reference;
+  aplicar();
+  renderLateral();
+}
+
+/* --- foco por placa --- */
+function focarPlaca(placa){
+  focoPlaca = focoPlaca === placa ? null : placa;
+  pontoSel = null;
+  renderVeiculos(); renderMapa(); renderLateral();
+  if (focoPlaca) document.getElementById('map').scrollIntoView({behavior:'smooth',block:'center'});
+}
+function limparFoco(){ focoPlaca = null; renderVeiculos(); renderMapa(); }
+function atualizarFaixaFoco(){
+  const f = document.getElementById('faixaFoco');
+  if (!focoPlaca){ f.classList.remove('ativa'); return; }
+  const pontos = viewData.filter(c => c.vehicles.includes(focoPlaca));
+  const ev = pontos.reduce((n,c)=>n+c.events.filter(e=>e.placa===focoPlaca).length,0);
+  document.getElementById('textoFoco').innerHTML =
+    `Mapa filtrado pelo veículo <strong>${esc(focoPlaca)}</strong> — ${ev} evento(s) em ${pontos.length} local(is)`;
+  f.classList.add('ativa');
+}
+
+/* =========================================================
+   PARETO
+   ========================================================= */
+function trocarPareto(modo){
+  modoPareto = modo;
+  document.querySelectorAll('[data-pareto]').forEach(b => b.classList.toggle('ativa', b.dataset.pareto===modo));
+  renderPareto();
+}
+function renderPareto(){
+  const singular = {locais:'local', veiculos:'veículo'};
+  const plural   = {locais:'locais', veiculos:'veículos'};
+  const alvo = plural[modoPareto], um = singular[modoPareto];
+
+  const itens = (modoPareto==='locais' ? viewData.map(c=>c.events.length) : vehicleRows.map(v=>v.total))
+                .sort((a,b)=>b-a);
+  const total = itens.reduce((s,v)=>s+v,0);
+  const n = itens.length;
+  if (!total){ if (graficos.pareto){ graficos.pareto.destroy(); graficos.pareto=null; } return; }
+
+  // curva acumulada: eixo X é a fatia dos itens (%), do mais recorrente ao menos
+  let acc = 0, k80 = 0;
+  const curva = [{x:0, y:0}];
+  for (let i=0;i<n;i++){
+    acc += itens[i];
+    if (!k80 && acc >= total*0.8) k80 = i+1;
+    // com muitos itens, amostra para não pesar o desenho
+    if (n <= 220 || i % Math.ceil(n/220) === 0 || i === n-1)
+      curva.push({x:(i+1)/n*100, y:acc/total*100});
+  }
+  const pctItens = Math.round(k80/n*100);
+  const disperso = pctItens >= 45;
+
+  document.getElementById('paretoTitulo').textContent =
+    `Quantos ${alvo} respondem por quanto das perdas`;
+  document.getElementById('paretoLegenda').innerHTML =
+    `<strong>Os ${pctItens}% dos ${alvo} de maior recorrência (${num(k80)} de ${num(n)}) concentram 80% dos eventos.</strong> ` +
+    (disperso
+      ? `Quanto mais a curva azul se aproxima da linha cinza, mais espalhado está o problema. Aqui as duas quase se
+         encostam: não existe um punhado de ${alvo} que resolva a maior parte das perdas. Use o diagnóstico da tabela
+         para escolher onde agir, e não o volume isolado.`
+      : `A curva azul sobe bem acima da linha cinza, ou seja, poucos ${alvo} concentram a maior parte das perdas —
+         atacar esse grupo resolve o grosso do problema.`);
+
+  if (graficos.pareto) graficos.pareto.destroy();
+  graficos.pareto = new Chart(document.getElementById('gPareto'), {
+    type:'line',
+    data:{datasets:[
+      { label:`% acumulado dos eventos`, data:curva, borderColor:'#020039',
+        backgroundColor:'rgba(2,0,57,.08)', borderWidth:2.5, fill:true, pointRadius:0, tension:.1 },
+      { label:'Se todos tivessem o mesmo peso', data:[{x:0,y:0},{x:100,y:100}],
+        borderColor:'#b9bec9', borderWidth:1.5, borderDash:[6,4], pointRadius:0, fill:false },
+      { label:'Marca dos 80%', data:[{x:0,y:80},{x:100,y:80}],
+        borderColor:'#ff3333', borderWidth:1.5, borderDash:[3,3], pointRadius:0, fill:false }
+    ]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      interaction:{mode:'nearest', axis:'x', intersect:false},
+      plugins:{
+        legend:{position:'bottom', labels:{boxWidth:14, font:{size:11}, usePointStyle:false}},
+        tooltip:{filter:i=>i.datasetIndex===0, callbacks:{
+          title:i=>`${Math.round(i[0].parsed.x)}% dos ${alvo} (${num(Math.max(1,Math.round(i[0].parsed.x/100*n)))} ${i[0].parsed.x/100*n < 2 ? um : alvo})`,
+          label:i=>`concentram ${dec(i.parsed.y)}% dos eventos`
+        }}
+      },
+      scales:{
+        x:{type:'linear', min:0, max:100,
+           title:{display:true, text:`% dos ${alvo}, do mais recorrente para o menos`, font:{size:11}, color:'#6a6f7d'},
+           ticks:{callback:v=>v+'%', font:{size:10}}, grid:{display:false}},
+        y:{min:0, max:100,
+           title:{display:true, text:'% acumulado dos eventos', font:{size:11}, color:'#6a6f7d'},
+           ticks:{callback:v=>v+'%', font:{size:10}}, grid:{color:'#eee'}}
+      }
+    }
+  });
+}
+
+/* =========================================================
+   INSIGHTS
+   ========================================================= */
+function renderInsights(){
+  const cx = document.getElementById('insights');
+  const cards = [];
+  const mes = mesAtivo();
+  document.getElementById('subAnalise').textContent =
+    `Recorte atual: ${resumoRecorte()} · ${mes.rotulo}. Os locais estão ordenados por recorrência.`;
+
+  // 1. cobertura: muitas placas e mais de uma tecnologia no mesmo ponto
+  const cob = viewData.filter(c => c.vehicles.length >= 5 && c.tecnologias.length >= 2)
+    .sort((a,b) => b.vehicles.length - a.vehicles.length || b.events.length - a.events.length)[0];
+  if (cob) cards.push(`<div class="insight p1">
+    <div class="insight-tipo">Prioridade 1 · telecom</div>
+    <h3>${esc(cob.reference)}</h3>
+    <p>${cob.events.length} eventos, ${cob.vehicles.length} placas distintas e ${cob.tecnologias.length} tecnologias
+       diferentes. Quando rastreadores de fabricantes diferentes falham no mesmo ponto, a causa provável é cobertura,
+       não equipamento.</p>
+    <div class="insight-acoes">
+      <button class="btn btn-secundario btn-mini" onclick="selecionarPonto('${idPonto(cob)}')">Ver no mapa</button>
+    </div></div>`);
+
+  // 2. equipamento: veículo cujos eventos caem em locais onde ninguém mais perde sinal
+  const eqp = vehicleRows.filter(v => v.total >= 8 && v.pctExclusivo >= 30)
+    .sort((a,b) => b.exclusivos - a.exclusivos)[0];
+  if (eqp) cards.push(`<div class="insight p2">
+    <div class="insight-tipo">Prioridade 2 · manutenção</div>
+    <h3>Placa ${esc(eqp.placa)} — ${eqp.total} eventos</h3>
+    <p>Espalhados por ${eqp.locaisDistintos} locais, sendo ${eqp.exclusivos} (${eqp.pctExclusivo}%) em pontos onde
+       nenhuma outra placa da frota perdeu sinal no mês. Aponta para o equipamento embarcado, e não para sombra de
+       cobertura.</p>
+    <div class="insight-acoes">
+      <button class="btn btn-secundario btn-mini" onclick="focarPlaca('${esc(eqp.placa)}')">Ver no mapa</button>
+    </div></div>`);
+
+  // 3. horário fora da curva
+  const porHora = new Array(24).fill(0);
+  eventosRecorte.forEach(e => porHora[e.hora]++);
+  const media = eventosRecorte.length/24;
+  const pico = porHora.indexOf(Math.max(...porHora));
+  if (media > 0 && porHora[pico] > media*1.6) cards.push(`<div class="insight">
+    <div class="insight-tipo">Observação</div>
+    <h3>${String(pico).padStart(2,'0')}h concentra ${num(porHora[pico])} eventos</h3>
+    <p>${dec(porHora[pico]/eventosRecorte.length*100)}% do recorte em uma única hora, contra média de
+       ${Math.round(media)} por hora. Vale checar a janela de transmissão nesse horário.</p></div>`);
+
+  cx.innerHTML = cards.length ? cards.join('')
+    : `<div class="insight"><div class="insight-tipo">Sem destaques</div>
+       <h3>Nenhum padrão forte no recorte atual</h3>
+       <p>Não há ponto com múltiplas tecnologias nem veículo com concentração em locais exclusivos. Amplie o recorte
+          ou reduza o limite de recorrência.</p></div>`;
+}
+
+function resumoRecorte(){
+  const p = [];
+  for (const f of FACETAS) if (filtros[f].length) p.push(filtros[f].slice(0,3).join(', '));
+  if (filtros.placas.length) p.push(`${filtros.placas.length} placa(s)`);
+  if (filtros.area) p.push('área desenhada');
+  return p.length ? p.join(' · ') : 'todos os eventos do mês';
+}
+
+/* =========================================================
+   GRÁFICOS
+   ========================================================= */
+function renderGraficos(){
+  ['linha','hora','uf','tec'].forEach(k => { if (graficos[k]) graficos[k].destroy(); });
+  const ev = eventosRecorte;               // mesma base dos KPIs, tabelas e Pareto
+  if (!ev.length) return;
+  const eixo = {grid:{color:'#eee'}, ticks:{color:'#666', font:{size:10}}};
+
+  // --- eventos por dia, sem pular os dias sem ocorrência ---
+  const DIA = 86400000;
+  const porDia = new Map();
+  let d0 = Infinity, d1 = -Infinity;
+  for (const e of ev){
+    const k = Math.floor(new Date(e.data.getFullYear(), e.data.getMonth(), e.data.getDate()).getTime()/DIA);
+    porDia.set(k, (porDia.get(k)||0)+1);
+    if (k<d0) d0=k; if (k>d1) d1=k;
+  }
+  const rot = [], val = [];
+  for (let k=d0; k<=d1; k++){
+    const d = new Date(k*DIA);
+    rot.push(`${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`);
+    val.push(porDia.get(k) || 0);          // dia vazio vale zero, não some do eixo
+  }
+  graficos.linha = new Chart(document.getElementById('gLinha'), {
+    type:'line',
+    data:{labels:rot, datasets:[{data:val, borderColor:'#020039', backgroundColor:'rgba(2,0,57,.06)',
+      borderWidth:2, fill:true, tension:.25, pointRadius:rot.length>45?0:3}]},
+    options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{display:false}},
+      scales:{y:{beginAtZero:true,...eixo},x:{...eixo,ticks:{...eixo.ticks,maxTicksLimit:12}}}}
+  });
+
+  // --- por hora ---
+  const porHora = new Array(24).fill(0);
+  ev.forEach(e => porHora[e.hora]++);
+  const mediaH = ev.length/24;
+  graficos.hora = new Chart(document.getElementById('gHora'), {
+    type:'bar',
+    data:{labels:porHora.map((_,h)=>String(h).padStart(2,'0')+'h'),
+      datasets:[{data:porHora, backgroundColor:porHora.map(v=>v>mediaH*1.6?'#ff3333':'#020039'), borderWidth:0}]},
+    options:{responsive:true,maintainAspectRatio:true,
+      plugins:{legend:{display:false},tooltip:{callbacks:{
+        afterLabel:i=>`média do período: ${Math.round(mediaH)}/hora`}}},
+      scales:{y:{beginAtZero:true,...eixo},x:eixo}}
+  });
+
+  // --- categorias: sem corte, para a soma fechar com o total ---
+  const agrupa = campo => {
+    const m = new Map();
+    ev.forEach(e => m.set(e[campo], (m.get(e[campo])||0)+1));
+    return [...m.entries()].sort((a,b)=>b[1]-a[1]);
+  };
+  const ufs = agrupa('uf');
+  graficos.uf = new Chart(document.getElementById('gUf'), {
+    type:'bar',
+    data:{labels:ufs.map(u=>u[0]), datasets:[{data:ufs.map(u=>u[1]), backgroundColor:'#020039', borderWidth:0}]},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:true,plugins:{legend:{display:false}},
+      scales:{x:{beginAtZero:true,...eixo},y:eixo}}
+  });
+
+  const tecs = agrupa('tecnologia');
+  graficos.tec = new Chart(document.getElementById('gTec'), {
+    type:'doughnut',
+    data:{labels:tecs.map(t=>t[0]), datasets:[{data:tecs.map(t=>t[1]),
+      backgroundColor:['#020039','#ff3333','#ff9900','#4a6fa5','#8c9db5','#c9d1dc','#5f6b7d'], borderWidth:2, borderColor:'#fff'}]},
+    options:{responsive:true,maintainAspectRatio:true,
+      plugins:{legend:{position:'bottom',labels:{font:{size:11},boxWidth:12,padding:10}},
+        tooltip:{callbacks:{label:i=>`${i.label}: ${num(i.parsed)} (${dec(i.parsed/ev.length*100)}%)`}}}}
+  });
+}
+
+/* =========================================================
+   PDF
+   ========================================================= */
+function exportarPDF(){
+  if (!criticalData.length){ alert('Não há pontos críticos no recorte atual para gerar o relatório.'); return; }
+  document.getElementById('doc').innerHTML = montarDocumento();
+  window.print();
+}
+
+function montarDocumento(){
+  const logo = document.querySelector('header svg').outerHTML;
+  const mes = mesAtivo(), ant = mesAnterior();
+  const emitido = new Date().toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'});
+  const eventos = viewData.reduce((s,c)=>s+c.events.length,0);
+  const veiculos = new Set(viewData.flatMap(c=>c.vehicles)).size;
+  const pontuais = viewData.filter(c=>c.events.length===1).length;
+  const ufs = new Set(eventosRecorte.map(e=>e.uf)).size;
+  const evAnt = ant ? baseView.reduce((s,c)=>s+c.events.length,0) : null;
+
+  const dt = d => d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'});
+  const hr = d => d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  const periodo = c => `${dt(c.startDate)} ${hr(c.startDate)}<br>a ${dt(c.endDate)} ${hr(c.endDate)}`;
+  const periodoLin = c => `${dt(c.startDate)} ${hr(c.startDate)} a ${dt(c.endDate)} ${hr(c.endDate)}`;
+
+  const top = criticalData.slice(0, TOP_PDF);
+  const eventosTop = top.reduce((n,c)=>n+c.events.length,0);
+
+  const varDoc = v => {
+    if (!v) return '—';
+    if (v.novo) return '<span class="doc-sobe">novo</span>';
+    if (!v.delta) return '— 0';
+    return `<span class="${v.delta>0?'doc-sobe':'doc-desce'}">${v.delta>0?'+':'−'}${Math.abs(v.delta)}</span>`;
+  };
+
+  const tabela = top.map((c,i)=>`<tr>
+    <td>${i+1}</td><td>${esc(c.reference)}</td><td>${esc(c.uf)}</td>
+    <td><span class="doc-num">${c.events.length}</span></td><td>${c.vehicles.length}</td>
+    <td>${c.tecnologias.length}</td><td>${varDoc(c.variacao)}</td>
+    <td>${diagnostico(c).texto}</td></tr>`).join('');
+
+  const detalhe = top.slice(0,15).map((c,i)=>{
+    const q = new Map();
+    c.events.forEach(e => q.set(e.placa,(q.get(e.placa)||0)+1));
+    const placas = [...q.entries()].sort((a,b)=>b[1]-a[1])
+      .map(([p,n]) => n>1?`${p} (${n}x)`:p).join(', ');
+    return `<div class="doc-ponto">
+      <b>${i+1}. ${esc(c.reference)} — ${c.events.length} eventos, ${c.vehicles.length} veículo(s)</b><br>
+      Coordenadas: ${coord(c.centerLat)}, ${coord(c.centerLon)} &nbsp;|&nbsp; ${esc(c.cidade)}/${esc(c.uf)} &nbsp;|&nbsp; ${periodoLin(c)}<br>
+      <strong>Veículos:</strong> ${esc(placas)}</div>`;
+  }).join('');
+
+  const veic = vehicleRows.slice(0,15).map(v=>`<tr>
+    <td><strong>${esc(v.placa)}</strong></td><td>${v.total}</td><td>${v.locaisDistintos}</td>
+    <td${v.total>=3&&v.concentracao>=60?' class="doc-sobe"':''}>${v.concentracao}%</td>
+    <td>${esc(v.principalNome)} (${v.principalQtd}x)</td><td>${esc(v.tec)}</td></tr>`).join('');
+
+  const compart = viewData.filter(c=>c.vehicles.length>=3)
+    .sort((a,b)=>b.vehicles.length-a.vehicles.length||b.events.length-a.events.length).slice(0,8);
+  const reinc = vehicleRows.filter(v=>v.total>=3&&v.concentracao>=60).slice(0,5);
+
+  const vals = viewData.map(c=>c.events.length).sort((a,b)=>b-a);
+  let acc=0,k80=0;
+  for (const v of vals){ acc+=v; k80++; if (acc>=eventos*0.8) break; }
+  const pctPareto = viewData.length ? Math.round(k80/viewData.length*100) : 0;
+
+  return `
+  <div class="capa">
+    <div class="capa-topo">${logo}<span class="capa-sel">Análise Operacional</span></div>
+    <div class="capa-meio">
+      <h1>Relatório mensal de perdas de sinal</h1>
+      <h2>Áreas de sombra por proximidade geográfica</h2>
+      <div class="capa-cli">${esc(clienteDoRecorte())}</div>
+      <div class="capa-op">${esc(operacaoDoRecorte())}</div>
+      <div class="capa-mes">${mes.rotulo.toUpperCase()}</div>
+      <div class="capa-kpis">
+        <div class="capa-kpi"><b>${num(eventos)}</b><span>eventos no mês</span></div>
+        <div class="capa-kpi"><b>${num(criticalData.length)}</b><span>pontos críticos</span></div>
+        <div class="capa-kpi"><b>${ufs}</b><span>estados afetados</span></div>
+      </div>
+    </div>
+    <div class="capa-pe"><span>Perdas de sinal · ${mes.rotulo}</span><span>Gerado em ${emitido}</span></div>
+  </div>
+
+  <h2>1. Resumo executivo</h2>
+  <p>Foram registrados <strong>${num(eventos)}</strong> eventos de perda de sinal em
+  <strong>${num(viewData.length)}</strong> locais distintos, envolvendo <strong>${num(veiculos)}</strong> veículos
+  ${evAnt!==null?`— contra ${num(evAnt)} eventos em ${ant.rotulo}, variação de
+  <strong>${evAnt?(eventos>=evAnt?'+':'−')+Math.abs(Math.round((eventos-evAnt)/evAnt*100))+'%':'—'}</strong>`:''}.
+  ${pctPareto>=45
+    ? `A distribuição é dispersa: ${num(k80)} locais (${pctPareto}%) somam 80% das ocorrências, ou seja, não há um
+       grupo pequeno de pontos capaz de resolver o problema isoladamente.`
+    : `A distribuição é concentrada: ${num(k80)} locais (${pctPareto}%) somam 80% das ocorrências, o que torna
+       viável atacar o problema por um grupo reduzido de pontos.`}
+  <strong>${num(pontuais)}</strong> locais registraram uma única ocorrência no período.</p>
+
+  <h2>2. Critério de análise</h2>
+  <p>Os eventos foram agrupados por proximidade geográfica com raio de até <strong>${filtros.raio} km</strong>.
+  Grupos cujos centros ficaram a menos de ${filtros.raio} km um do outro foram fundidos, para que o mesmo local não
+  seja contado duas vezes. Alertas do mesmo veículo, na mesma coordenada e no mesmo minuto contam como um único
+  evento. São tratados como <strong>pontos críticos</strong> os locais com <strong>${filtros.minCritical}</strong>
+  ou mais ocorrências.</p>
+  <p>O diagnóstico de cada ponto parte da diversidade de equipamentos: locais onde falham rastreadores de três ou
+  mais tecnologias, ou que reúnem cinco ou mais placas com pelo menos duas tecnologias, são classificados como
+  <strong>sombra de cobertura</strong> — fabricantes diferentes falhando no mesmo lugar apontam para o local, não
+  para o veículo. Locais com até duas placas e uma única tecnologia apontam para
+  <strong>verificação do equipamento embarcado</strong>. Os demais ficam em observação.</p>
+  <div class="doc-kpis">
+    <div class="doc-kpi"><b>${num(eventos)}</b><span>Eventos</span></div>
+    <div class="doc-kpi"><b>${num(veiculos)}</b><span>Veículos</span></div>
+    <div class="doc-kpi"><b>${num(viewData.length)}</b><span>Locais</span></div>
+    <div class="doc-kpi"><b>${num(criticalData.length)}</b><span>Críticos</span></div>
+  </div>
+
+  <h2 class="quebra">3. Regiões críticas — maior concentração de eventos</h2>
+  <p>${criticalData.length>TOP_PDF
+    ? `Os <strong>${TOP_PDF}</strong> pontos de maior recorrência, de um total de
+       <strong>${num(criticalData.length)}</strong> que atingiram o limite de ${filtros.minCritical} evento(s).
+       Juntos, concentram <strong>${num(eventosTop)}</strong> eventos.`
+    : `Pontos com ${filtros.minCritical} ou mais eventos, ordenados por recorrência.`}</p>
+  <table>
+    <colgroup><col style="width:4%"><col style="width:30%"><col style="width:5%"><col style="width:9%">
+      <col style="width:8%"><col style="width:8%"><col style="width:12%"><col style="width:24%"></colgroup>
+    <thead><tr><th>#</th><th>Local de referência</th><th>UF</th><th>Eventos</th><th>Placas</th>
+      <th>Tecn.</th><th>vs.&nbsp;${ant?ant.rotulo:'ant.'}</th><th>Diagnóstico</th></tr></thead>
+    <tbody>${tabela}</tbody>
+  </table>
+
+  <h2 class="quebra">3.1. Detalhamento dos pontos mais críticos</h2>
+  ${detalhe}
+
+  <h2 class="quebra">4. Veículos com maior incidência</h2>
+  <p>Veículos com maior número de eventos no período, com a quantidade de locais distintos e o percentual
+  concentrado no local mais recorrente de cada um.</p>
+  <table>
+    <colgroup><col style="width:13%"><col style="width:10%"><col style="width:12%"><col style="width:15%">
+      <col style="width:35%"><col style="width:15%"></colgroup>
+    <thead><tr><th>Placa</th><th>Eventos</th><th>Locais distintos</th><th>Concentração</th>
+      <th>Local principal</th><th>Tecnologia</th></tr></thead>
+    <tbody>${veic}</tbody>
+  </table>
+  ${reinc.length
+    ? `<p>Os veículos a seguir concentram parcela expressiva das ocorrências em um único local, o que sugere parada
+       prolongada somada a sinal fraco, ou problema no equipamento embarcado:</p><ul>${
+       reinc.map(v=>`<li><strong>${esc(v.placa)}</strong>: ${v.principalQtd} dos ${v.total} eventos
+       (${v.concentracao}%) em ${esc(v.principalNome)}.</li>`).join('')}</ul>`
+    : `<p>Nenhum veículo concentra 60% ou mais das suas ocorrências em um único ponto, o que indica perdas
+       distribuídas ao longo das rotas e não falha de equipamento.</p>`}
+
+  <h2>5. Pontos de atenção — locais compartilhados por múltiplos veículos</h2>
+  <p>Locais que concentram eventos de vários veículos diferentes são indício mais forte de problema de cobertura ou
+  infraestrutura no próprio local:</p>
+  <ul>${compart.map(c=>`<li><strong>${esc(c.reference)}</strong> — ${c.events.length} eventos,
+    ${c.vehicles.length} veículo(s) e ${c.tecnologias.length} tecnologia(s).</li>`).join('')}</ul>
+
+  <h2>6. Conclusão</h2>
+  <p>A análise aponta dois padrões distintos. O primeiro são os <strong>pontos recorrentes compartilhados por
+  múltiplos veículos</strong>${compart.length?`, como ${compart.slice(0,3).map(c=>esc(c.reference)).join(', ')}`:''},
+  que sugerem problema de cobertura de rede ou infraestrutura local. O segundo são os <strong>veículos com alta
+  concentração de eventos em um único ponto</strong>${reinc.length?`, como ${reinc.slice(0,3).map(v=>esc(v.placa)).join(', ')}`:''},
+  que podem indicar parada prolongada somada a sinal fraco, ou problema pontual no equipamento embarcado.</p>
+  <p>Recomenda-se a validação em campo dos pontos listados na seção 3 e a verificação técnica dos rastreadores dos
+  veículos destacados na seção 4.</p>
+
+  <p class="doc-nota">Recorte: ${esc(resumoRecorte())} · raio de ${filtros.raio} km · limite de
+  ${filtros.minCritical} evento(s) para ponto crítico · mínimo de ${filtros.minVeiculos} veículo(s) por ponto.
+  Alterar os filtros na tela altera o conteúdo deste documento.</p>`;
+}
+
+// pega o valor predominante do campo dentro do recorte
+function predominante(campo){
+  const c = new Map();
+  for (const e of eventosRecorte) c.set(e[campo], (c.get(e[campo])||0)+1);
+  const top = [...c.entries()].sort((a,b)=>b[1]-a[1])[0];
+  return top && top[0] && top[0] !== '—' ? capitalizar(top[0]) : '';
+}
+function capitalizar(t){
+  return String(t).replace(/\.$/,'').toLowerCase()
+    .replace(/\b([a-zà-ú])([a-zà-ú]*)/g, (_,a,b)=>a.toUpperCase()+b)
+    .replace(/\b(De|Da|Do|Das|Dos|E)\b/g, m=>m.toLowerCase())
+    .replace(/\bLtda\b/i,'Ltda');
+}
+function clienteDoRecorte(){
+  const m = mesAtivo();
+  return predominante('cliente') || (m ? m.nome.replace(/\.(xlsx|xls)$/i,'').replace(/[_-]/g,' ') : 'Relatório');
+}
+function operacaoDoRecorte(){
+  const base = predominante('operacao');
+  const p = [];
+  for (const f of ['tecnologia','vinculo','uf']) if (filtros[f].length) p.push(filtros[f].join(', '));
+  return [base, ...p].filter(Boolean).join(' · ') || 'Todos os eventos do mês';
+}
+
+/* =========================================================
+   CONTROLES
+   ========================================================= */
+(function init(){
+  const hi = document.getElementById('fHoraIni'), hf = document.getElementById('fHoraFim');
+  for (let h=0; h<24; h++){
+    hi.insertAdjacentHTML('beforeend', `<option value="${h}">${String(h).padStart(2,'0')}h</option>`);
+    hf.insertAdjacentHTML('beforeend', `<option value="${h}">${String(h).padStart(2,'0')}h</option>`);
+  }
+  hf.value = 23;
+
+  const liga = (id, fn, evento='input') => document.getElementById(id).addEventListener(evento, fn);
+  liga('fRecorrencia', e => { filtros.minCritical = +e.target.value;
+    document.getElementById('vRecorrencia').textContent = e.target.value; aplicar(); });
+  liga('fVeiculos', e => { filtros.minVeiculos = +e.target.value;
+    document.getElementById('vVeiculos').textContent = e.target.value; aplicar(); });
+  liga('fRaio', e => { filtros.raio = +e.target.value;
+    document.getElementById('vRaio').textContent = e.target.value + ' km'; agendarRaio(); });
+  liga('fHoraIni', e => { filtros.horaIni = +e.target.value; aplicar(); }, 'change');
+  liga('fHoraFim', e => { filtros.horaFim = +e.target.value; aplicar(); }, 'change');
+  liga('fDataIni', e => { filtros.dataIni = e.target.value ? new Date(e.target.value+'T00:00:00') : null; aplicar(); }, 'change');
+  liga('fDataFim', e => { filtros.dataFim = e.target.value ? new Date(e.target.value+'T23:59:59') : null; aplicar(); }, 'change');
+
+  let tBusca = null;
+  liga('fBusca', e => { const v = e.target.value; clearTimeout(tBusca);
+    tBusca = setTimeout(() => { filtros.busca = v; aplicar(); }, 220); });
+})();
+
+let tRaio = null;
+function agendarRaio(){ clearTimeout(tRaio); tRaio = setTimeout(aplicar, 260); }
+
+const _aplicar = aplicar;
+aplicar = function(){ _aplicar(); renderMeses(); };
+</script>
+</body>
+</html>
