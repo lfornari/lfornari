@@ -403,11 +403,23 @@ canvas{max-height:290px!important}
     <h2>Distribuição geográfica</h2>
     <div class="mapa-topo">
       <p class="sub" style="margin:0" id="subMapa"></p>
-      <div class="abas">
-        <button class="aba ativa" data-mapa="pontos" onclick="trocarMapa('pontos')">Pontos</button>
-        <button class="aba" data-mapa="calor" onclick="trocarMapa('calor')">Mapa de calor</button>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <label style="font-size:12px;color:#6a6f7d;display:flex;align-items:center;gap:6px">
+          Fundo
+          <select id="fundoMapa" onchange="trocarFundo(this.value)"
+                  style="padding:6px 8px;border:1px solid #d3d6de;border-radius:4px;font-family:inherit;font-size:12px">
+            <option value="0">OpenStreetMap</option>
+            <option value="1">Esri — tons de cinza</option>
+            <option value="2">OpenStreetMap (Alemanha)</option>
+          </select>
+        </label>
+        <div class="abas">
+          <button class="aba ativa" data-mapa="pontos" onclick="trocarMapa('pontos')">Pontos</button>
+          <button class="aba" data-mapa="calor" onclick="trocarMapa('calor')">Mapa de calor</button>
+        </div>
       </div>
     </div>
+    <div class="aviso" id="avisoMapa" style="display:none"></div>
     <div class="faixa-foco" id="faixaFoco">
       <span id="textoFoco"></span>
       <button class="btn btn-secundario btn-mini" onclick="limparFoco()">Mostrar todos os pontos</button>
@@ -1367,25 +1379,59 @@ function renderVeiculos(){
 /* =========================================================
    MAPA
    ========================================================= */
+// Fundos de mapa abertos, sem cadastro nem chave. A ordem é a de preferência;
+// se um não responder, o próximo entra sozinho. (O basemap do CARTO saiu daqui:
+// passou a exigir chave de API.)
+const FUNDOS = [
+  { nome:'OpenStreetMap',
+    url:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    opcoes:{ maxZoom:19, attribution:'© OpenStreetMap' } },
+  { nome:'Esri — tons de cinza',
+    url:'https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+    opcoes:{ maxZoom:16, attribution:'© Esri · © OpenStreetMap' } },
+  { nome:'OpenStreetMap (Alemanha)',
+    url:'https://tile.openstreetmap.de/{z}/{x}/{y}.png',
+    opcoes:{ maxZoom:18, attribution:'© OpenStreetMap' } }
+];
+let camadaBase = null, fundoAtual = 0;
+
+function aplicarFundo(i, automatico){
+  if (!map) return;
+  if (camadaBase) map.removeLayer(camadaBase);
+  fundoAtual = i;
+
+  const f = FUNDOS[i];
+  let erros = 0, carregou = false;
+  camadaBase = L.tileLayer(f.url, f.opcoes).addTo(map);
+
+  camadaBase.on('tileload', () => { carregou = true; });
+  camadaBase.on('tileerror', () => {
+    erros++;
+    // tiles isolados falham em borda e zoom alto; só troca quando nenhum carregou
+    if (carregou || erros < 6) return;
+    if (i + 1 < FUNDOS.length) aplicarFundo(i + 1, true);
+    else avisoMapa('Nenhum servidor de mapa respondeu. Os pontos continuam listados nas tabelas.');
+  });
+
+  const sel = document.getElementById('fundoMapa');
+  if (sel) sel.value = String(i);
+  if (automatico) avisoMapa(`O fundo anterior não respondeu. Usando ${f.nome}.`);
+  else avisoMapa('');
+}
+
+function avisoMapa(txt){
+  const el = document.getElementById('avisoMapa');
+  if (!el) return;
+  el.textContent = txt;
+  el.style.display = txt ? 'block' : 'none';
+}
+
+function trocarFundo(valor){ aplicarFundo(Number(valor), false); }
+
 function iniciarMapa(){
   if (map) return;
   map = L.map('map').setView([-15,-51], 4);
-
-  // O tile padrão do OpenStreetMap recusa requisições de páginas abertas como
-  // arquivo local (403 "access denied" ao dar zoom). O basemap do CARTO permite,
-  // e o cinza-claro combina melhor com o relatório. Se falhar, cai no OSM.
-  let trocou = false;
-  const base = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-    subdomains:'abcd', maxZoom:19, crossOrigin:true,
-    attribution:'© OpenStreetMap · © CARTO'
-  }).addTo(map);
-  base.on('tileerror', () => {
-    if (trocou) return;
-    trocou = true;
-    map.removeLayer(base);
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-      {maxZoom:19, attribution:'© OpenStreetMap'}).addTo(map);
-  });
+  aplicarFundo(0, false);
   camadaPontos = L.layerGroup().addTo(map);
   camadaDesenho = new L.FeatureGroup().addTo(map);
 
@@ -1395,6 +1441,7 @@ function iniciarMapa(){
             polyline:false, circle:false, marker:false, circlemarker:false},
       edit:{featureGroup:camadaDesenho, remove:true}
     }));
+
     const lerArea = layer => layer.getLatLngs()[0].map(p => [p.lat, p.lng]);
 
     map.on(L.Draw.Event.CREATED, e => {
