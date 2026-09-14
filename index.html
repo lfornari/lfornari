@@ -429,7 +429,7 @@ canvas{max-height:290px!important}
         <div id="map"></div>
         <p class="legenda" id="legendaMapa"></p>
         <div class="calor-esc" id="escalaCalor" style="display:none">
-          <span>menos</span><div class="calor-barra"></div><span>mais eventos</span>
+          <span id="escalaCalorTexto">densidade</span><div class="calor-barra"></div>
         </div>
       </div>
       <div class="lateral" id="lateralMapa"></div>
@@ -479,7 +479,6 @@ canvas{max-height:290px!important}
 
 <div id="doc"></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
 <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
@@ -1473,26 +1472,28 @@ function renderMapa(){
   const limites = [];
 
   if (modoMapa === 'calor'){
-    if (!L.heatLayer){
-      modoMapa = 'pontos';
-      document.querySelectorAll('[data-mapa]').forEach(b => b.classList.toggle('ativa', b.dataset.mapa==='pontos'));
-      document.getElementById('legendaMapa').textContent =
-        'Não foi possível carregar a camada de calor. Verifique a conexão e tente novamente.';
-      return renderMapa();
-    }
-    // Normalizar pelo maior ponto deixava quase tudo invisível: com um pico de 38
-    // eventos, um local de 3 ficava em 0,08 de intensidade. O teto passa a ser o
-    // percentil 90, então a massa do mapa ocupa a faixa visível da escala.
+    // Desenhado com círculos do próprio Leaflet, e não com a camada de calor em
+    // canvas: aquela não recebe a classe de zoom-animated e escorregava do lugar
+    // durante o zoom, mostrando densidade em coordenadas erradas.
     const ordenados = pontos.map(c=>c.events.length).sort((a,b)=>a-b);
     const teto = Math.max(2, ordenados[Math.floor(ordenados.length*0.9)] || 2);
-    const dados = pontos.map(c => [c.centerLat, c.centerLon, Math.min(1, c.events.length/teto)]);
-    if (dados.length){
-      camadaCalor = L.heatLayer(dados, {
-        radius:24, blur:18, minOpacity:0.35, max:1.0,
-        gradient:{0.0:'#4a6fa5', 0.35:'#00c2ff', 0.6:'#00ff00', 0.8:'#ff9900', 1:'#ff3333'}
-      }).addTo(map);
+
+    for (const c of pontos){
+      const i = Math.min(1, c.events.length / teto);
+      const id = idPonto(c);
+      const marca = L.circleMarker([c.centerLat, c.centerLon], {
+        radius: 7 + Math.round(Math.sqrt(i) * 15),
+        color: corDensidade(i), fillColor: corDensidade(i),
+        weight: 0, fillOpacity: 0.45, interactive: true
+      }).addTo(camadaPontos);
+      marca.bindTooltip(`${esc(c.reference)} — ${c.events.length} evento(s)`, {direction:'top'});
+      marca.on('click', () => selecionarPonto(id, false));
+      marcadores[id] = marca;
+      limites.push([c.centerLat, c.centerLon]);
     }
-    pontos.forEach(c => limites.push([c.centerLat, c.centerLon]));
+
+    const faixa = document.getElementById('escalaCalorTexto');
+    if (faixa) faixa.textContent = `1 evento até ${teto}+ eventos`;
   } else {
     for (const c of pontos){
       const qtd = focoPlaca ? c.events.filter(e=>e.placa===focoPlaca).length : c.events.length;
@@ -1520,12 +1521,20 @@ function renderMapa(){
   document.getElementById('legendaMapa').innerHTML = focoPlaca
     ? `Exibindo apenas <strong>${esc(focoPlaca)}</strong> — ${pontos.length} local(is)`
     : (modoMapa==='calor'
-       ? `Densidade de ${num(pontos.length)} locais. Áreas mais quentes concentram mais eventos; a escala satura nos pontos de maior recorrência.`
+       ? `Densidade de ${num(pontos.length)} locais. Círculos maiores e mais quentes concentram mais eventos; a escala satura nos pontos de maior recorrência. Clique em um círculo para ver o detalhe.`
        : `Vermelho = ponto crítico (${criticos}) · laranja = abaixo do limite · ${num(pontos.length)} pontos no mapa`);
   document.getElementById('subMapa').textContent = filtros.area
     ? 'Área desenhada aplicada como filtro. Use "Limpar tudo" ou o chip para remover.'
     : 'Desenhe um polígono ou retângulo no mapa para filtrar por área.';
   atualizarFaixaFoco();
+}
+
+// escala de densidade: mesma leitura do mapa de calor, em cores discretas
+function corDensidade(i){
+  if (i >= 0.85) return '#ff3333';
+  if (i >= 0.60) return '#ff9900';
+  if (i >= 0.35) return '#00c2ff';
+  return '#4a6fa5';
 }
 
 function trocarMapa(modo){
