@@ -529,6 +529,19 @@ function paraData(v){
   return null;
 }
 
+// A referência vem como "6,30 km de POSTO X - CIDADE/UF": o prefixo é a distância
+// daquele evento até o ponto conhecido, então o MESMO lugar aparece com dezenas de
+// grafias. Separar o prefixo do nome é o que permite agrupar e exibir direito.
+const RE_PREFIXO = /^\s*(\d+[.,]?\d*)\s*km\s+de\s+/i;
+function normalizarReferencia(ref){
+  const t = String(ref || '').trim().replace(/\s+/g, ' ');
+  const m = RE_PREFIXO.exec(t);
+  return {
+    nome: (m ? t.slice(m[0].length) : t).trim() || 'Sem referência',
+    distancia: m ? parseFloat(m[1].replace(',', '.')) : null
+  };
+}
+
 // UF e cidade vêm dentro do texto da referência: "... - FRANCISCO SA/MG"
 const RE_UF = /\/([A-Z]{2})\b/;
 const RE_CIDADE = /-\s*([^-\/]+?)\s*\/[A-Z]{2}\b/;
@@ -609,10 +622,11 @@ function registrarMes(nome, linhas, mapa){
     const ok = !isNaN(la) && !isNaN(lo) && la>=-90 && la<=90 && lo>=-180 && lo<=180 && !(la===0&&lo===0);
     if (!ok || !placa || !data) continue;
 
-    const ref = mapa.referencia && l[mapa.referencia] ? String(l[mapa.referencia]) : 'Sem referência';
-    const {uf, cidade} = extrairLocal(ref);
+    const bruto = mapa.referencia && l[mapa.referencia] ? String(l[mapa.referencia]) : 'Sem referência';
+    const {nome: ref, distancia: distRef} = normalizarReferencia(bruto);
+    const {uf, cidade} = extrairLocal(bruto);
     eventos.push({
-      lat:la, lon:lo, placa, data, hora:data.getHours(), ref, uf, cidade,
+      lat:la, lon:lo, placa, data, hora:data.getHours(), ref, distRef, uf, cidade,
       tecnologia: valor(l, mapa.tecnologia), vinculo: valor(l, mapa.vinculo),
       proprietario: valor(l, mapa.proprietario), excecao: valor(l, mapa.excecao),
       motorista: valor(l, mapa.motorista), sm: valor(l, mapa.sm),
@@ -661,10 +675,7 @@ function registrarMes(nome, linhas, mapa){
   avisos = [];
   if (ordens.length > 1){
     avisos.push(`"${nome}" cobre ${ordens.length} meses e foi separado em ` +
-      ordens.map(o => `${rotuloMes(o)} (${num(grupos.get(o).length)})`).join(', ') +
-      `. A visão aberta é "Todo o período"; clique em um mês para analisá-lo e compará-lo com o anterior.`);
-  } else if (meses.length > 1){
-    avisos.push(`${rotuloMes(ordens[0])} anexado. A visão aberta é "Todo o período"; clique em um mês para comparar com o anterior.`);
+      ordens.map(o => `${rotuloMes(o)} (${num(grupos.get(o).length)} eventos)`).join(', ') + '.');
   }
 
   mostrar('conteudo');
@@ -727,55 +738,115 @@ function deduplicar(eventos){
   return base;
 }
 
-function montarCluster(eventos, refPadrao){
+function montarCluster(eventos){
   let sLa=0, sLo=0; const placas=new Set(), tecs=new Set();
-  let ini=null, fim=null;
+  let ini=null, fim=null, perto=Infinity;
+  const nomes=new Map();
   for (const e of eventos){
     sLa+=e.lat; sLo+=e.lon; placas.add(e.placa); tecs.add(e.tecnologia);
     if (!ini || e.data<ini) ini=e.data;
     if (!fim || e.data>fim) fim=e.data;
+    if (e.distRef!=null && e.distRef<perto) perto=e.distRef;
+    nomes.set(e.ref, (nomes.get(e.ref)||0)+1);
   }
+  // o nome do ponto é a referência que mais se repete nele, e não a do primeiro
+  // evento encontrado, que era arbitrária e mudava conforme a ordem dos dados
+  let nome='', maior=-1;
+  for (const [k,v] of nomes) if (v>maior || (v===maior && k<nome)){ nome=k; maior=v; }
+  const principal = eventos.find(e => e.ref===nome) || eventos[0];
+
   return {
     centerLat:sLa/eventos.length, centerLon:sLo/eventos.length,
-    reference: refPadrao || eventos[0].ref, uf: eventos[0].uf, cidade: eventos[0].cidade,
+    reference: nome, uf: principal.uf, cidade: principal.cidade,
+    distanciaRef: perto===Infinity ? null : perto,
+    grafias: nomes.size,
     events: eventos, vehicles:[...placas], tecnologias:[...tecs],
     startDate:ini, endDate:fim
   };
 }
 
+// ---------- índice espacial ----------
+// Comparar todo mundo com todo mundo é O(n²): com 20 mil eventos o agrupamento
+// levava 4,5 s e travava a tela a cada filtro. A grade divide o mapa em células
+// do tamanho do raio, e só os vizinhos imediatos precisam ser testados.
+function construirGrade(pontos, raioKm, lat, lon){
+  let maiorLat = 0;
+  for (const p of pontos) maiorLat = Math.max(maiorLat, Math.abs(lat(p)));
+  const cos = Math.max(0.2, Math.cos(rad(maiorLat)));
+  const passoLat = raioKm / 111;
+  const passoLon = raioKm / (111 * cos);
+  const celulas = new Map();
+  pontos.forEach((p, i) => {
+    const k = Math.floor(lat(p)/passoLat) + ':' + Math.floor(lon(p)/passoLon);
+    let c = celulas.get(k);
+    if (!c){ c = []; celulas.set(k, c); }
+    c.push(i);
+  });
+  return {celulas, passoLat, passoLon};
+}
+
+function candidatos(grade, la, lo){
+  const cl = Math.floor(la/grade.passoLat), co = Math.floor(lo/grade.passoLon);
+  const out = [];
+  for (let a=-1; a<=1; a++)
+    for (let b=-1; b<=1; b++){
+      const c = grade.celulas.get((cl+a) + ':' + (co+b));
+      if (c) for (const i of c) out.push(i);
+    }
+  return out;
+}
+
 function agrupar(eventos, raioKm){
-  const bruto = [], usado = new Uint8Array(eventos.length);
-  for (let i=0;i<eventos.length;i++){
+  if (!eventos.length) return [];
+
+  const grade = construirGrade(eventos, raioKm, e=>e.lat, e=>e.lon);
+  const usado = new Uint8Array(eventos.length);
+  const bruto = [];
+
+  for (let i=0; i<eventos.length; i++){
     if (usado[i]) continue;
-    usado[i]=1;
-    const semente = eventos[i], membros=[semente];
-    for (let j=i+1;j<eventos.length;j++){
-      if (usado[j]) continue;
+    usado[i] = 1;
+    const semente = eventos[i];
+    const membros = [semente];
+    for (const j of candidatos(grade, semente.lat, semente.lon)){
+      if (j <= i || usado[j]) continue;
       if (distanciaKm(semente.lat, semente.lon, eventos[j].lat, eventos[j].lon) <= raioKm){
-        membros.push(eventos[j]); usado[j]=1;
+        membros.push(eventos[j]); usado[j] = 1;
       }
     }
-    bruto.push(montarCluster(membros, semente.ref));
+    bruto.push(montarCluster(membros));
   }
-  // funde grupos cujos centros ficaram dentro do raio: sem isso o mesmo posto
-  // se parte em dois quando a semente cai na borda
-  let lista = bruto, mudou = true, voltas = 0;
+
+  const lista = fundirProximos(bruto, raioKm);
+  lista.sort((a,b) => b.events.length - a.events.length);
+  return lista;
+}
+
+// Funde grupos cujos centros ficaram dentro do raio: sem isso o mesmo posto se
+// parte em dois quando a semente cai na borda, e o resultado muda com a ordem.
+function fundirProximos(grupos, raioKm){
+  let lista = grupos, voltas = 0, mudou = true;
+
   while (mudou && voltas < 20){
     mudou = false; voltas++;
     lista.sort((a,b) => b.events.length - a.events.length);
-    for (let i=0;i<lista.length;i++){
-      if (!lista[i]) continue;
-      for (let j=i+1;j<lista.length;j++){
-        if (!lista[j]) continue;
-        if (distanciaKm(lista[i].centerLat,lista[i].centerLon,lista[j].centerLat,lista[j].centerLon) <= raioKm){
-          lista[i] = montarCluster(lista[i].events.concat(lista[j].events), lista[i].reference);
-          lista[j] = null; mudou = true;
+    const grade = construirGrade(lista, raioKm, c=>c.centerLat, c=>c.centerLon);
+    const morto = new Uint8Array(lista.length);
+
+    for (let i=0; i<lista.length; i++){
+      if (morto[i]) continue;
+      let atual = lista[i];
+      for (const j of candidatos(grade, atual.centerLat, atual.centerLon)){
+        if (j <= i || morto[j]) continue;
+        if (distanciaKm(atual.centerLat, atual.centerLon, lista[j].centerLat, lista[j].centerLon) <= raioKm){
+          atual = montarCluster(atual.events.concat(lista[j].events));
+          morto[j] = 1; mudou = true;
         }
       }
+      lista[i] = atual;
     }
-    lista = lista.filter(Boolean);
+    lista = lista.filter((_, i) => !morto[i]);
   }
-  lista.sort((a,b) => b.events.length - a.events.length);
   return lista;
 }
 
@@ -792,6 +863,20 @@ function sincronizarPeriodos(){
     : null;
   if (mesAtivoId === 'todos' && !consolidado) mesAtivoId = meses.length ? meses[meses.length-1].id : null;
   chaveLocalMes = '';   // o agrupamento do período precisa ser refeito
+}
+
+// O limite de recorrência é absoluto: 3 eventos em 15 dias não é o mesmo que 3 em
+// 90. A duração do recorte acompanha o número em toda a tela e no PDF.
+function diasDoPeriodo(lista){
+  if (!lista || !lista.length) return 0;
+  // eventosRecorte vem agrupado por local, não por data: é preciso varrer
+  let ini = Infinity, fim = -Infinity;
+  for (const e of lista){
+    const t = e.data.getTime();
+    if (t < ini) ini = t;
+    if (t > fim) fim = t;
+  }
+  return Math.max(1, Math.round((fim - ini)/86400000) + 1);
 }
 
 function mesAtivo(){
@@ -1192,14 +1277,15 @@ function renderKpis(){
   for (const v of vals){ acc+=v; k++; if (acc >= eventos*0.8) break; }
   const pareto = viewData.length ? Math.round(k/viewData.length*100) : 0;
   const frota = mesAtivo() ? new Set(mesAtivo().eventos.map(e=>e.placa)).size : 0;
+  const dias = diasDoPeriodo(eventosRecorte);
 
   document.getElementById('kpis').innerHTML = `
     <div class="kpi"><div class="kpi-rot">Eventos no recorte</div>
       <div class="kpi-val">${num(eventos)}${delta(eventos, eventosAnt)}</div>
       <div class="kpi-nota">${temBase?`vs. ${num(eventosAnt)} em ${ant.rotulo}, no mesmo recorte`:'sem mês de comparação'}</div></div>
-    <div class="kpi"><div class="kpi-rot">Pontos críticos (≥${filtros.minCritical})</div>
+    <div class="kpi"><div class="kpi-rot">Pontos críticos (≥${filtros.minCritical} em ${dias} dias)</div>
       <div class="kpi-val">${num(criticos)}${temBase?delta(criticos, criticosAnt):''}</div>
-      <div class="kpi-nota">${temBase?`${novos} sem equivalente em ${ant.rotulo}`:'anexe o mês anterior para comparar'}</div></div>
+      <div class="kpi-nota">${temBase?`${novos} sem equivalente em ${ant.rotulo}`:`recorte de ${dias} dias · escolha um mês para comparar`}</div></div>
     <div class="kpi"><div class="kpi-rot">Veículos envolvidos</div>
       <div class="kpi-val">${num(veic)}${delta(veic, veicAnt)}</div>
       <div class="kpi-nota">de ${num(frota)} placas com evento no mês</div></div>
@@ -1215,7 +1301,8 @@ function renderCriticos(){
   const tb = document.getElementById('tbCriticos');
   document.getElementById('thVar').textContent = mesAnterior() ? `vs. ${mesAnterior().rotulo}` : 'vs. anterior';
   document.getElementById('subCriticos').textContent =
-    `Locais com ${filtros.minCritical} ou mais ocorrências, ordenados por recorrência. Clique para ver no mapa.`;
+    `Locais com ${filtros.minCritical} ou mais ocorrências ao longo dos ${diasDoPeriodo(eventosRecorte)} dias do recorte, ` +
+    `ordenados por recorrência. Clique para ver no mapa.`;
 
   if (!criticalData.length){
     tb.innerHTML = '<tr><td colspan="8" class="vazio">Nenhum ponto atende aos critérios atuais</td></tr>';
@@ -1705,6 +1792,9 @@ function montarDocumento(){
   const logo = document.querySelector('header svg').outerHTML;
   const mes = mesAtivo(), ant = mesAnterior();
   const emitido = new Date().toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'});
+  const dias = diasDoPeriodo(eventosRecorte);
+  const de = eventosRecorte.length ? eventosRecorte[0].data : mes.eventos[0].data;
+  const ate = eventosRecorte.length ? eventosRecorte[eventosRecorte.length-1].data : mes.eventos[mes.eventos.length-1].data;
   const eventos = viewData.reduce((s,c)=>s+c.events.length,0);
   const veiculos = new Set(viewData.flatMap(c=>c.vehicles)).size;
   const pontuais = viewData.filter(c=>c.events.length===1).length;
@@ -1761,13 +1851,14 @@ function montarDocumento(){
   <div class="capa">
     <div class="capa-topo">${logo}<span class="capa-sel">Análise Operacional</span></div>
     <div class="capa-meio">
-      <h1>Relatório mensal de perdas de sinal</h1>
+      <h1>${mes.id==='todos' ? 'Relatório de perdas de sinal' : 'Relatório mensal de perdas de sinal'}</h1>
       <h2>Áreas de sombra por proximidade geográfica</h2>
       <div class="capa-cli">${esc(clienteDoRecorte())}</div>
       <div class="capa-op">${esc(operacaoDoRecorte())}</div>
       <div class="capa-mes">${mes.rotulo.toUpperCase()}</div>
+      <div class="capa-op">${de.toLocaleDateString('pt-BR')} a ${ate.toLocaleDateString('pt-BR')} · ${dias} dias</div>
       <div class="capa-kpis">
-        <div class="capa-kpi"><b>${num(eventos)}</b><span>eventos no mês</span></div>
+        <div class="capa-kpi"><b>${num(eventos)}</b><span>eventos em ${dias} dias</span></div>
         <div class="capa-kpi"><b>${num(criticalData.length)}</b><span>pontos críticos</span></div>
         <div class="capa-kpi"><b>${ufs}</b><span>estados afetados</span></div>
       </div>
