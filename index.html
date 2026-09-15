@@ -254,7 +254,7 @@ canvas{max-height:290px!important}
 #doc table{width:100%;border-collapse:collapse;font-size:8.5pt;margin:8px 0 14px;table-layout:fixed}
 #doc thead{display:table-header-group}
 #doc tr{page-break-inside:avoid}
-#doc th{line-height:1.25;background:#020039;color:#fff;font-weight:600;text-align:left;padding:6px;font-size:7.5pt;text-transform:uppercase;letter-spacing:.4px;word-break:break-word}
+#doc th{line-height:1.25;background:#020039;color:#fff;font-weight:600;text-align:left;padding:6px;font-size:7.5pt;text-transform:uppercase;letter-spacing:.4px;word-break:break-word;white-space:normal;overflow-wrap:anywhere}
 #doc td{padding:4px 6px;border-bottom:1px solid #e6e6e6;vertical-align:top;word-break:break-word}
 #doc tbody tr:nth-child(even){background:#f6f7fa}
 .doc-num{display:inline-block;background:#ff3333;color:#fff;font-weight:700;padding:1px 6px;border-radius:2px;font-size:8pt}
@@ -407,11 +407,7 @@ canvas{max-height:290px!important}
         <label style="font-size:12px;color:#6a6f7d;display:flex;align-items:center;gap:6px">
           Fundo
           <select id="fundoMapa" onchange="trocarFundo(this.value)"
-                  style="padding:6px 8px;border:1px solid #d3d6de;border-radius:4px;font-family:inherit;font-size:12px">
-            <option value="0">OpenStreetMap</option>
-            <option value="1">Esri — tons de cinza</option>
-            <option value="2">OpenStreetMap (Alemanha)</option>
-          </select>
+                  style="padding:6px 8px;border:1px solid #d3d6de;border-radius:4px;font-family:inherit;font-size:12px"></select>
         </label>
         <div class="abas">
           <button class="aba ativa" data-mapa="pontos" onclick="trocarMapa('pontos')">Pontos</button>
@@ -479,6 +475,7 @@ canvas{max-height:290px!important}
 
 <div id="doc"></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
 <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
@@ -1381,41 +1378,80 @@ function renderVeiculos(){
 // Fundos de mapa abertos, sem cadastro nem chave. A ordem é a de preferência;
 // se um não responder, o próximo entra sozinho. (O basemap do CARTO saiu daqui:
 // passou a exigir chave de API.)
+// Fundos abertos, sem cadastro nem chave. O Esri vem primeiro porque é o mais
+// tolerante a páginas abertas localmente; o OSM oficial recusa requisições sem
+// Referer válido, que é o caso de um arquivo aberto via file://.
 const FUNDOS = [
-  { nome:'OpenStreetMap',
-    url:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-    opcoes:{ maxZoom:19, attribution:'© OpenStreetMap' } },
   { nome:'Esri — tons de cinza',
     url:'https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
     opcoes:{ maxZoom:16, attribution:'© Esri · © OpenStreetMap' } },
-  { nome:'OpenStreetMap (Alemanha)',
-    url:'https://tile.openstreetmap.de/{z}/{x}/{y}.png',
-    opcoes:{ maxZoom:18, attribution:'© OpenStreetMap' } }
+  { nome:'Esri — ruas',
+    url:'https://services.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+    opcoes:{ maxZoom:19, attribution:'© Esri' } },
+  { nome:'Esri — satélite',
+    url:'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    opcoes:{ maxZoom:19, attribution:'© Esri · Maxar · Earthstar Geographics' } },
+  { nome:'OpenStreetMap',
+    url:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    opcoes:{ maxZoom:19, attribution:'© OpenStreetMap' } },
+  { nome:'OpenTopoMap',
+    url:'https://tile.opentopomap.org/{z}/{x}/{y}.png',
+    opcoes:{ maxZoom:17, attribution:'© OpenStreetMap · SRTM · OpenTopoMap' } },
+  { nome:'Sem fundo (só os pontos)',
+    url:null, opcoes:{} }
 ];
 let camadaBase = null, fundoAtual = 0;
 
+function montarSeletorFundo(){
+  const sel = document.getElementById('fundoMapa');
+  if (!sel || sel.options.length === FUNDOS.length) return;
+  sel.innerHTML = FUNDOS.map((f,i) => `<option value="${i}">${esc(f.nome)}</option>`).join('');
+}
+
 function aplicarFundo(i, automatico){
   if (!map) return;
-  if (camadaBase) map.removeLayer(camadaBase);
+  montarSeletorFundo();
+  if (camadaBase){ map.removeLayer(camadaBase); camadaBase = null; }
   fundoAtual = i;
 
   const f = FUNDOS[i];
+  const sel = document.getElementById('fundoMapa');
+  if (sel) sel.value = String(i);
+
+  if (!f.url){                       // opção "sem fundo"
+    avisoMapa(automatico
+      ? 'Nenhum servidor de mapa respondeu; seguindo sem fundo. Os pontos continuam posicionados e as tabelas, completas.' + dicaArquivoLocal()
+      : 'Mapa sem fundo: os pontos continuam posicionados corretamente.');
+    return;
+  }
+
   let erros = 0, carregou = false;
   camadaBase = L.tileLayer(f.url, f.opcoes).addTo(map);
 
-  camadaBase.on('tileload', () => { carregou = true; });
-  camadaBase.on('tileerror', () => {
-    erros++;
-    // tiles isolados falham em borda e zoom alto; só troca quando nenhum carregou
-    if (carregou || erros < 6) return;
-    if (i + 1 < FUNDOS.length) aplicarFundo(i + 1, true);
-    else avisoMapa('Nenhum servidor de mapa respondeu. Os pontos continuam listados nas tabelas.');
+  camadaBase.on('tileload', () => {
+    if (carregou) return;
+    carregou = true;
+    if (!automatico) avisoMapa('');
   });
 
-  const sel = document.getElementById('fundoMapa');
-  if (sel) sel.value = String(i);
-  if (automatico) avisoMapa(`O fundo anterior não respondeu. Usando ${f.nome}.`);
+  camadaBase.on('tileerror', () => {
+    erros++;
+    // tiles isolados falham em borda e zoom alto; só desiste se nenhum carregou
+    if (carregou || erros < 6) return;
+    if (i + 1 < FUNDOS.length) return aplicarFundo(i + 1, true);
+    avisoMapa('Nenhum servidor de mapa respondeu. Os pontos continuam posicionados e as tabelas, completas.');
+  });
+
+  if (automatico) avisoMapa(`O fundo anterior não respondeu. Usando ${f.nome}.` + dicaArquivoLocal());
   else avisoMapa('');
+}
+
+// Aberto como arquivo local, o navegador não envia Referer e vários servidores de
+// tile devolvem 403. Servir por HTTP resolve, então vale dizer isso ao usuário.
+function dicaArquivoLocal(){
+  if (typeof location === 'undefined' || location.protocol !== 'file:') return '';
+  return ' Como a página está aberta direto do arquivo, alguns servidores recusam o acesso (403).' +
+         ' Rodar "python -m http.server" na pasta e abrir por http://localhost:8000 costuma resolver.';
 }
 
 function avisoMapa(txt){
@@ -1429,7 +1465,11 @@ function trocarFundo(valor){ aplicarFundo(Number(valor), false); }
 
 function iniciarMapa(){
   if (map) return;
-  map = L.map('map').setView([-15,-51], 4);
+  // zoomAnimation desligado de propósito: com ele o canvas da camada de calor
+  // recebe a classe leaflet-zoom-animated e depende do _animateZoom, onde a
+  // mancha escorrega durante a transição. Desligado, o Leaflet esconde o canvas
+  // no zoom e redesenha na posição correta ao terminar.
+  map = L.map('map', {zoomAnimation:false, markerZoomAnimation:false}).setView([-15,-51], 4);
   aplicarFundo(0, false);
   camadaPontos = L.layerGroup().addTo(map);
   camadaDesenho = new L.FeatureGroup().addTo(map);
@@ -1472,28 +1512,33 @@ function renderMapa(){
   const limites = [];
 
   if (modoMapa === 'calor'){
-    // Desenhado com círculos do próprio Leaflet, e não com a camada de calor em
-    // canvas: aquela não recebe a classe de zoom-animated e escorregava do lugar
-    // durante o zoom, mostrando densidade em coordenadas erradas.
-    const ordenados = pontos.map(c=>c.events.length).sort((a,b)=>a-b);
-    const teto = Math.max(2, ordenados[Math.floor(ordenados.length*0.9)] || 2);
-
-    for (const c of pontos){
-      const i = Math.min(1, c.events.length / teto);
-      const id = idPonto(c);
-      const marca = L.circleMarker([c.centerLat, c.centerLon], {
-        radius: 7 + Math.round(Math.sqrt(i) * 15),
-        color: corDensidade(i), fillColor: corDensidade(i),
-        weight: 0, fillOpacity: 0.45, interactive: true
-      }).addTo(camadaPontos);
-      marca.bindTooltip(`${esc(c.reference)} — ${c.events.length} evento(s)`, {direction:'top'});
-      marca.on('click', () => selecionarPonto(id, false));
-      marcadores[id] = marca;
-      limites.push([c.centerLat, c.centerLon]);
+    if (!L.heatLayer){
+      modoMapa = 'pontos';
+      document.querySelectorAll('[data-mapa]').forEach(b => b.classList.toggle('ativa', b.dataset.mapa==='pontos'));
+      avisoMapa('Não foi possível carregar a camada de calor. Exibindo os pontos.');
+      return renderMapa();
     }
 
+    // A biblioteca é feita para pontos crus e acumula a densidade sozinha, então
+    // alimentamos os eventos e não os centros já agregados.
+    const brutos = [];
+    for (const c of pontos) for (const e of c.events) brutos.push([e.lat, e.lon, 1]);
+
+    camadaCalor = L.heatLayer(brutos, {
+      radius: 22,
+      blur: 16,
+      minOpacity: 0.30,
+      max: 6,        // eventos sobrepostos necessários para saturar a cor
+      // O fator interno é 1/2^(maxZoom − zoomAtual): com maxZoom alto a
+      // intensidade some ao afastar. Manter perto do zoom inicial evita isso.
+      maxZoom: 5,
+      gradient: {0.2:'#2b6cb0', 0.4:'#00c2ff', 0.6:'#00e676', 0.8:'#ff9900', 1:'#ff3333'}
+    }).addTo(map);
+
+    for (const c of pontos) limites.push([c.centerLat, c.centerLon]);
+
     const faixa = document.getElementById('escalaCalorTexto');
-    if (faixa) faixa.textContent = `1 evento até ${teto}+ eventos`;
+    if (faixa) faixa.textContent = `${num(brutos.length)} eventos · satura em 6 sobrepostos`;
   } else {
     for (const c of pontos){
       const qtd = focoPlaca ? c.events.filter(e=>e.placa===focoPlaca).length : c.events.length;
@@ -1521,20 +1566,12 @@ function renderMapa(){
   document.getElementById('legendaMapa').innerHTML = focoPlaca
     ? `Exibindo apenas <strong>${esc(focoPlaca)}</strong> — ${pontos.length} local(is)`
     : (modoMapa==='calor'
-       ? `Densidade de ${num(pontos.length)} locais. Círculos maiores e mais quentes concentram mais eventos; a escala satura nos pontos de maior recorrência. Clique em um círculo para ver o detalhe.`
+       ? `Densidade dos eventos em ${num(pontos.length)} locais. Aproxime para separar as concentrações; use a aba Pontos para clicar em um local.`
        : `Vermelho = ponto crítico (${criticos}) · laranja = abaixo do limite · ${num(pontos.length)} pontos no mapa`);
   document.getElementById('subMapa').textContent = filtros.area
     ? 'Área desenhada aplicada como filtro. Use "Limpar tudo" ou o chip para remover.'
     : 'Desenhe um polígono ou retângulo no mapa para filtrar por área.';
   atualizarFaixaFoco();
-}
-
-// escala de densidade: mesma leitura do mapa de calor, em cores discretas
-function corDensidade(i){
-  if (i >= 0.85) return '#ff3333';
-  if (i >= 0.60) return '#ff9900';
-  if (i >= 0.35) return '#00c2ff';
-  return '#4a6fa5';
 }
 
 function trocarMapa(modo){
@@ -1939,7 +1976,8 @@ function montarDocumento(){
   Grupos cujos centros ficaram a menos de ${filtros.raio} km um do outro foram fundidos, para que o mesmo local não
   seja contado duas vezes. Alertas do mesmo veículo, na mesma coordenada e no mesmo minuto contam como um único
   evento. São tratados como <strong>pontos críticos</strong> os locais com <strong>${filtros.minCritical}</strong>
-  ou mais ocorrências.</p>
+  ou mais ocorrências <strong>ao longo dos ${dias} dias analisados</strong>. O limite é absoluto, então contagens de
+  pontos críticos de períodos com durações diferentes não devem ser comparadas diretamente.</p>
   <p>O diagnóstico de cada ponto parte da diversidade de equipamentos: locais onde falham rastreadores de três ou
   mais tecnologias, ou que reúnem cinco ou mais placas com pelo menos duas tecnologias, são classificados como
   <strong>sombra de cobertura</strong> — fabricantes diferentes falhando no mesmo lugar apontam para o local, não
@@ -1952,7 +1990,7 @@ function montarDocumento(){
     <div class="doc-kpi"><b>${num(criticalData.length)}</b><span>Críticos</span></div>
   </div>
 
-  <h2 class="quebra">3. Regiões críticas — maior concentração de eventos</h2>
+  <h2>3. Regiões críticas — maior concentração de eventos</h2>
   <p>${criticalData.length>TOP_PDF
     ? `Os <strong>${TOP_PDF}</strong> pontos de maior recorrência, de um total de
        <strong>${num(criticalData.length)}</strong> que atingiram o limite de ${filtros.minCritical} evento(s).
@@ -1973,7 +2011,7 @@ function montarDocumento(){
   <p>Veículos com maior número de eventos no período, com a quantidade de locais distintos e o percentual
   concentrado no local mais recorrente de cada um.</p>
   <table>
-    <colgroup><col style="width:13%"><col style="width:10%"><col style="width:12%"><col style="width:15%">
+    <colgroup><col style="width:12%"><col style="width:11%"><col style="width:11%"><col style="width:16%">
       <col style="width:35%"><col style="width:15%"></colgroup>
     <thead><tr><th>Placa</th><th>Eventos</th><th>Locais distintos</th><th>Concentração</th>
       <th>Local principal</th><th>Tecnologia</th></tr></thead>
@@ -2014,12 +2052,29 @@ function predominante(campo){
   const top = [...c.entries()].sort((a,b)=>b[1]-a[1])[0];
   return top && top[0] && top[0] !== '—' ? capitalizar(top[0]) : '';
 }
+// "DDR SHOPEE - OPERAÇÃO ROTA EXPRESSA." precisa virar "DDR Shopee - Operação Rota
+// Expressa", e não "Ddr Shopee": siglas e UFs têm de sobreviver, mas "E" e "DO"
+// são conectivos e não siglas. A lista de estados desempata os casos de 2 letras.
+const UFS = new Set(['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG',
+                     'PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO']);
+const CONECTIVOS = /^(de|da|do|das|dos|e|em|no|na)$/;
+
 function capitalizar(t){
-  return String(t).replace(/\.$/,'').toLowerCase()
-    .replace(/\b([a-zà-ú])([a-zà-ú]*)/g, (_,a,b)=>a.toUpperCase()+b)
-    .replace(/\b(De|Da|Do|Das|Dos|E)\b/g, m=>m.toLowerCase())
-    .replace(/\bLtda\b/i,'Ltda');
+  let primeira = true;
+  return String(t).trim().replace(/\.$/, '')
+    .replace(/[A-Za-zÀ-ÿ]+/g, palavra => {
+      const min = palavra.toLowerCase();
+      const alta = palavra === palavra.toUpperCase();
+      let r;
+      if (alta && UFS.has(palavra)) r = palavra;                       // BA, SP, MG
+      else if (!primeira && CONECTIVOS.test(min)) r = min;             // e, do, da
+      else if (alta && (palavra.length <= 3 || !/[AEIOUÀ-Ý]/.test(palavra))) r = palavra;  // DDR, CD, XD
+      else r = min.charAt(0).toUpperCase() + min.slice(1);
+      primeira = false;
+      return r;
+    });
 }
+
 function clienteDoRecorte(){
   const m = mesAtivo();
   return predominante('cliente') || (m ? m.nome.replace(/\.(xlsx|xls)$/i,'').replace(/[_-]/g,' ') : 'Relatório');
