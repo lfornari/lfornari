@@ -395,6 +395,9 @@ canvas{max-height:290px!important}
         <tbody id="tbCriticos"></tbody>
       </table>
     </div>
+    <p class="legenda-col"><strong>Eventos no mês anterior</strong> mostra quantas perdas o mesmo local teve no mês
+    de comparação e, entre parênteses, a diferença para o mês em análise. <em>Sem registro</em> significa que não
+    havia ponto equivalente dentro do raio de agrupamento no mês anterior.</p>
     <p class="rodape-tabela" id="pesCriticos"></p>
   </section>
 
@@ -436,11 +439,15 @@ canvas{max-height:290px!important}
   <section>
     <h2>Veículos com maior incidência</h2>
     <p class="sub">Clique em uma placa para ver no mapa apenas os pontos onde aquele veículo perdeu sinal.</p>
+    <p class="legenda-col"><strong>% do total da placa</strong> é a fatia das perdas daquele veículo que aconteceu no
+    seu local mais recorrente. Percentual alto indica veículo que perde sinal sempre no mesmo ponto — parada longa ou
+    equipamento. Percentual baixo indica perdas espalhadas pela rota.</p>
     <div class="tabela-caixa">
       <table>
         <thead><tr>
-          <th>Placa</th><th>Eventos</th><th>Locais distintos</th>
-          <th>Concentração no local principal</th><th>Local principal</th><th>Tecnologia</th>
+          <th>Placa</th><th>Eventos<br>no período</th><th>Locais<br>distintos</th>
+          <th>Local onde mais perdeu sinal</th><th>Eventos<br>nesse local</th>
+          <th>% do total<br>da placa</th><th>Tecnologia</th>
         </tr></thead>
         <tbody id="tbVeiculos"></tbody>
       </table>
@@ -1347,7 +1354,7 @@ function renderKpis(){
    ========================================================= */
 function renderCriticos(){
   const tb = document.getElementById('tbCriticos');
-  document.getElementById('thVar').textContent = mesAnterior() ? `vs. ${mesAnterior().rotulo}` : 'vs. anterior';
+  document.getElementById('thVar').textContent = mesAnterior() ? `Eventos em ${mesAnterior().rotulo}` : 'Mês anterior';
   document.getElementById('subCriticos').textContent =
     `Locais com ${filtros.minCritical} ou mais ocorrências ao longo dos ${diasDoPeriodo(eventosRecorte)} dias do recorte, ` +
     `ordenados por recorrência. Clique para ver no mapa.`;
@@ -1379,11 +1386,14 @@ function renderCriticos(){
     ? `Exibindo os 25 primeiros de ${num(criticalData.length)} pontos críticos. O PDF traz os ${TOP_PDF} maiores.`
     : `${criticalData.length} ponto(s) crítico(s) no recorte.`;
 }
+// Mostra quantos eventos o mesmo local teve no mês anterior e a diferença, para
+// que "+10" não fique solto: o leitor vê "17 (+10)" ao lado de "27" na coluna
+// Eventos e entende a conta sem legenda.
 function textoVariacao(v){
   if (!v) return '<span style="color:#9aa0ad">—</span>';
-  if (v.novo) return '<span class="var" style="color:#ff3333">novo</span>';
-  if (v.delta === 0) return '<span class="var" style="color:#6a6f7d">— 0</span>';
-  return `<span class="var" style="color:${v.delta>0?'#ff3333':'#2e7d32'}">${v.delta>0?'▲':'▼'} ${Math.abs(v.delta)}</span>`;
+  if (v.novo) return '<span class="var" style="color:#ff3333">sem registro</span>';
+  if (v.delta === 0) return `${v.anterior} <span style="color:#6a6f7d">(=)</span>`;
+  return `${v.anterior} <span class="var" style="color:${v.delta>0?'#ff3333':'#2e7d32'}">(${v.delta>0?'+':'−'}${Math.abs(v.delta)})</span>`;
 }
 
 /* =========================================================
@@ -1392,7 +1402,7 @@ function textoVariacao(v){
 function renderVeiculos(){
   const tb = document.getElementById('tbVeiculos');
   if (!vehicleRows.length){
-    tb.innerHTML = '<tr><td colspan="6" class="vazio">Nenhum veículo no recorte</td></tr>';
+    tb.innerHTML = '<tr><td colspan="7" class="vazio">Nenhum veículo no recorte</td></tr>';
     return;
   }
   const frag = document.createDocumentFragment();
@@ -1404,8 +1414,9 @@ function renderVeiculos(){
     tr.title = 'Clique para ver os pontos deste veículo no mapa';
     tr.innerHTML = `<td><span class="nome">${esc(v.placa)}</span></td>
       <td>${v.total}</td><td>${v.locaisDistintos}</td>
+      <td>${esc(v.principalNome)}</td>
+      <td>${v.principalQtd}</td>
       <td${forte?' style="color:#ff3333;font-weight:700"':''}>${v.concentracao}%</td>
-      <td>${esc(v.principalNome)} <span style="color:#9aa0ad">(${v.principalQtd})</span></td>
       <td>${esc(v.tec)}</td>`;
     tr.addEventListener('click', () => focarPlaca(v.placa));
     frag.appendChild(tr);
@@ -1946,9 +1957,9 @@ function montarDocumento(){
 
   const varDoc = v => {
     if (!v) return '—';
-    if (v.novo) return '<span class="doc-sobe">novo</span>';
-    if (!v.delta) return '— 0';
-    return `<span class="${v.delta>0?'doc-sobe':'doc-desce'}">${v.delta>0?'+':'−'}${Math.abs(v.delta)}</span>`;
+    if (v.novo) return '<span class="doc-sobe">sem registro</span>';
+    if (!v.delta) return `${v.anterior} (=)`;
+    return `${v.anterior} <span class="${v.delta>0?'doc-sobe':'doc-desce'}">(${v.delta>0?'+':'−'}${Math.abs(v.delta)})</span>`;
   };
 
   const tabela = top.map((c,i)=>`<tr>
@@ -1970,8 +1981,9 @@ function montarDocumento(){
 
   const veic = vehicleRows.slice(0,15).map(v=>`<tr>
     <td><strong>${esc(v.placa)}</strong></td><td>${v.total}</td><td>${v.locaisDistintos}</td>
+    <td>${esc(v.principalNome)}</td><td>${v.principalQtd}</td>
     <td${v.total>=3&&v.concentracao>=60?' class="doc-sobe"':''}>${v.concentracao}%</td>
-    <td>${esc(v.principalNome)} (${v.principalQtd}x)</td><td>${esc(v.tec)}</td></tr>`).join('');
+    <td>${esc(v.tec)}</td></tr>`).join('');
 
   const compart = viewData.filter(c=>c.vehicles.length>=3)
     .sort((a,b)=>b.vehicles.length-a.vehicles.length||b.events.length-a.events.length).slice(0,8);
@@ -2047,21 +2059,29 @@ function montarDocumento(){
     <colgroup><col style="width:4%"><col style="width:30%"><col style="width:5%"><col style="width:9%">
       <col style="width:8%"><col style="width:8%"><col style="width:12%"><col style="width:24%"></colgroup>
     <thead><tr><th>#</th><th>Local de referência</th><th>UF</th><th>Eventos</th><th>Placas</th>
-      <th>Tecn.</th><th>vs.&nbsp;${ant?ant.rotulo:'ant.'}</th><th>Diagnóstico</th></tr></thead>
+      <th>Tecn.</th><th>Eventos em ${ant?ant.rotulo:'mês ant.'}</th><th>Diagnóstico</th></tr></thead>
     <tbody>${tabela}</tbody>
   </table>
+  <p class="doc-nota" style="margin-top:0">Como ler: <strong>Eventos</strong> é o total de perdas no local durante o
+  período. <strong>Placas</strong> e <strong>Tecn.</strong> são quantos veículos e quantas tecnologias de rastreador
+  distintas registraram perda ali. <strong>Eventos em ${ant?ant.rotulo:'mês anterior'}</strong> traz a contagem do
+  mesmo local no período de comparação, com a diferença entre parênteses; <em>sem registro</em> indica que não havia
+  ponto equivalente dentro do raio de ${filtros.raio} km.</p>
 
   <h2 class="quebra">3.1. Detalhamento dos pontos mais críticos</h2>
   ${detalhe}
 
   <h2 class="quebra">4. Veículos com maior incidência</h2>
-  <p>Veículos com maior número de eventos no período, com a quantidade de locais distintos e o percentual
-  concentrado no local mais recorrente de cada um.</p>
+  <p>Veículos com maior número de eventos no período. A coluna <strong>% do total da placa</strong> é a fatia das
+  perdas daquele veículo que aconteceu no seu local mais recorrente: percentual alto aponta veículo que perde sinal
+  sempre no mesmo ponto — parada prolongada ou equipamento embarcado —, enquanto percentual baixo aponta perdas
+  espalhadas ao longo da rota.</p>
   <table>
-    <colgroup><col style="width:12%"><col style="width:11%"><col style="width:11%"><col style="width:16%">
-      <col style="width:35%"><col style="width:15%"></colgroup>
-    <thead><tr><th>Placa</th><th>Eventos</th><th>Locais distintos</th><th>Concentração</th>
-      <th>Local principal</th><th>Tecnologia</th></tr></thead>
+    <colgroup><col style="width:11%"><col style="width:10%"><col style="width:12%"><col style="width:29%">
+      <col style="width:11%"><col style="width:12%"><col style="width:15%"></colgroup>
+    <thead><tr><th>Placa</th><th>Eventos no período</th><th>Locais distintos</th>
+      <th>Local onde mais perdeu sinal</th><th>Eventos nesse local</th><th>% do total da placa</th>
+      <th>Tecnologia</th></tr></thead>
     <tbody>${veic}</tbody>
   </table>
   ${reinc.length
