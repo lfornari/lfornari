@@ -875,16 +875,38 @@ function sincronizarPeriodos(){
 
 // O limite de recorrência é absoluto: 3 eventos em 15 dias não é o mesmo que 3 em
 // 90. A duração do recorte acompanha o número em toda a tela e no PDF.
-function diasDoPeriodo(lista){
-  if (!lista || !lista.length) return 0;
-  // eventosRecorte vem agrupado por local, não por data: é preciso varrer
-  let ini = Infinity, fim = -Infinity;
+function periodoDe(lista){
+  if (!lista || !lista.length) return {ini:null, fim:null, dias:0};
+  // eventosRecorte vem agrupado por local, não por data: é preciso varrer para
+  // achar o primeiro e o último evento de verdade.
+  let ini = null, fim = null;
   for (const e of lista){
-    const t = e.data.getTime();
-    if (t < ini) ini = t;
-    if (t > fim) fim = t;
+    if (!ini || e.data < ini) ini = e.data;
+    if (!fim || e.data > fim) fim = e.data;
   }
-  return Math.max(1, Math.round((fim - ini)/86400000) + 1);
+  // dias de calendário: 01/08 00h a 31/08 23h são 31 dias, não 32. Arredondar a
+  // diferença bruta e somar 1 contava o mesmo dia duas vezes.
+  const d0 = Date.UTC(ini.getFullYear(), ini.getMonth(), ini.getDate());
+  const d1 = Date.UTC(fim.getFullYear(), fim.getMonth(), fim.getDate());
+  return {ini, fim, dias: Math.round((d1 - d0)/86400000) + 1};
+}
+
+function diasDoPeriodo(lista){ return periodoDe(lista).dias; }
+
+// Duas janelas só são comparáveis de forma direta se tiverem duração parecida.
+// Acima de 15% de diferença, a variação absoluta engana.
+function comparacaoDesigual(a, b){
+  if (!a || !b) return false;
+  return Math.abs(a-b) / Math.max(a,b) > 0.15;
+}
+
+// Um cartão rotulado "ago/26" pode conter só 15 dias. Marcar isso evita que o
+// rótulo sugira um mês inteiro.
+function coberturaDoMes(mes){
+  if (!mes || mes.id === 'todos') return null;
+  const j = periodoDe(mes.eventos);
+  const diasNoMes = new Date(Math.floor(mes.ordem/100), mes.ordem%100, 0).getDate();
+  return {dias:j.dias, diasNoMes, parcial: j.dias < diasNoMes * 0.9, ini:j.ini, fim:j.fim};
 }
 
 function mesAtivo(){
@@ -1090,7 +1112,11 @@ function renderMeses(){
 
   barra.innerHTML = cartaoTodos + meses.map(m => {
     const cls = m.id===mesAtivoId ? 'mes ativo' : (base && m.id===base.id ? 'mes base' : 'mes');
-    const tag = m.id===mesAtivoId ? 'em análise' : (base && m.id===base.id ? 'comparação' : '');
+    const cob = coberturaDoMes(m);
+    const papel = m.id===mesAtivoId ? 'em análise' : (base && m.id===base.id ? 'comparação' : '');
+    const tag = cob && cob.parcial
+      ? `${cob.dias}/${cob.diasNoMes} dias${papel?' · '+papel:''}`
+      : papel;
     return `<div class="${cls}" onclick="trocarMes('${m.id}')" title="${esc(m.nome)}">
       <button class="mes-x" onclick="event.stopPropagation();removerMes('${m.id}')" title="Remover">×</button>
       <div class="mes-rot">${m.rotulo}</div>
@@ -1286,11 +1312,25 @@ function renderKpis(){
   const pareto = viewData.length ? Math.round(k/viewData.length*100) : 0;
   const frota = mesAtivo() ? new Set(mesAtivo().eventos.map(e=>e.placa)).size : 0;
   const dias = diasDoPeriodo(eventosRecorte);
+  const diasAnt = temBase ? diasDoPeriodo(baseView.flatMap(c=>c.events)) : 0;
+  const desigual = comparacaoDesigual(dias, diasAnt);
+
+  // Comparar 15 dias com 31 produz uma "queda" que é só o calendário. Quando as
+  // durações diferem, a leitura honesta é a média diária.
+  let notaComparacao;
+  if (!temBase) notaComparacao = 'sem mês de comparação';
+  else if (!desigual) notaComparacao = `vs. ${num(eventosAnt)} em ${ant.rotulo}, no mesmo recorte`;
+  else {
+    const md = eventos/dias, mdAnt = eventosAnt/diasAnt;
+    const v = mdAnt ? Math.round((md-mdAnt)/mdAnt*100) : 0;
+    notaComparacao = `períodos desiguais: ${dias} dias vs. ${diasAnt} em ${ant.rotulo}. ` +
+      `Por dia: ${dec(md)} vs. ${dec(mdAnt)} (${v>=0?'+':'−'}${Math.abs(v)}%)`;
+  }
 
   document.getElementById('kpis').innerHTML = `
     <div class="kpi"><div class="kpi-rot">Eventos no recorte</div>
       <div class="kpi-val">${num(eventos)}${delta(eventos, eventosAnt)}</div>
-      <div class="kpi-nota">${temBase?`vs. ${num(eventosAnt)} em ${ant.rotulo}, no mesmo recorte`:'sem mês de comparação'}</div></div>
+      <div class="kpi-nota">${notaComparacao}</div></div>
     <div class="kpi"><div class="kpi-rot">Pontos críticos (≥${filtros.minCritical} em ${dias} dias)</div>
       <div class="kpi-val">${num(criticos)}${temBase?delta(criticos, criticosAnt):''}</div>
       <div class="kpi-nota">${temBase?`${novos} sem equivalente em ${ant.rotulo}`:`recorte de ${dias} dias · escolha um mês para comparar`}</div></div>
@@ -1885,14 +1925,16 @@ function montarDocumento(){
   const logo = document.querySelector('header svg').outerHTML;
   const mes = mesAtivo(), ant = mesAnterior();
   const emitido = new Date().toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'});
-  const dias = diasDoPeriodo(eventosRecorte);
-  const de = eventosRecorte.length ? eventosRecorte[0].data : mes.eventos[0].data;
-  const ate = eventosRecorte.length ? eventosRecorte[eventosRecorte.length-1].data : mes.eventos[mes.eventos.length-1].data;
+  // datas e duração saem do mesmo cálculo, para não se contradizerem na capa
+  const janela = periodoDe(eventosRecorte.length ? eventosRecorte : mes.eventos);
+  const dias = janela.dias, de = janela.ini, ate = janela.fim;
   const eventos = viewData.reduce((s,c)=>s+c.events.length,0);
   const veiculos = new Set(viewData.flatMap(c=>c.vehicles)).size;
   const pontuais = viewData.filter(c=>c.events.length===1).length;
   const ufs = new Set(eventosRecorte.map(e=>e.uf)).size;
   const evAnt = ant ? baseView.reduce((s,c)=>s+c.events.length,0) : null;
+  const diasAnt = ant ? diasDoPeriodo(baseView.flatMap(c=>c.events)) : 0;
+  const desigual = ant && comparacaoDesigual(dias, diasAnt);
 
   const dt = d => d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'});
   const hr = d => d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
@@ -1948,7 +1990,8 @@ function montarDocumento(){
       <h2>Áreas de sombra por proximidade geográfica</h2>
       <div class="capa-cli">${esc(clienteDoRecorte())}</div>
       <div class="capa-op">${esc(operacaoDoRecorte())}</div>
-      <div class="capa-mes">${mes.rotulo.toUpperCase()}</div>
+      <div class="capa-mes">${mes.rotulo.toUpperCase()}${(()=>{const c=coberturaDoMes(mes);
+        return c && c.parcial ? ` <span style="font-size:10pt;font-weight:400;color:#5a5f6d">— período parcial</span>` : '';})()}</div>
       <div class="capa-op">${de.toLocaleDateString('pt-BR')} a ${ate.toLocaleDateString('pt-BR')} · ${dias} dias</div>
       <div class="capa-kpis">
         <div class="capa-kpi"><b>${num(eventos)}</b><span>eventos em ${dias} dias</span></div>
@@ -1964,6 +2007,10 @@ function montarDocumento(){
   <strong>${num(viewData.length)}</strong> locais distintos, envolvendo <strong>${num(veiculos)}</strong> veículos
   ${evAnt!==null?`— contra ${num(evAnt)} eventos em ${ant.rotulo}, variação de
   <strong>${evAnt?(eventos>=evAnt?'+':'−')+Math.abs(Math.round((eventos-evAnt)/evAnt*100))+'%':'—'}</strong>`:''}.
+  ${desigual?`<strong>Atenção:</strong> os dois períodos têm durações diferentes (${dias} dias contra ${diasAnt} de
+  ${ant.rotulo}), então a variação acima reflete em parte o tamanho da janela. Pela média diária a comparação é de
+  <strong>${dec(eventos/dias)}</strong> contra <strong>${dec(evAnt/diasAnt)}</strong> eventos por dia
+  (${eventos/dias>=evAnt/diasAnt?'+':'−'}${Math.abs(Math.round(((eventos/dias)-(evAnt/diasAnt))/(evAnt/diasAnt)*100))}%).`:''}
   ${pctPareto>=45
     ? `A distribuição é dispersa: ${num(k80)} locais (${pctPareto}%) somam 80% das ocorrências, ou seja, não há um
        grupo pequeno de pontos capaz de resolver o problema isoladamente.`
