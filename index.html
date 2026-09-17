@@ -154,8 +154,24 @@ tbody tr:nth-child(even){background:#fafbfc}
 .aba{padding:7px 14px;background:#fff;border:0;font-family:inherit;font-size:12px;font-weight:600;color:var(--suave);cursor:pointer}
 .aba+.aba{border-left:1px solid var(--linha)}
 .aba.ativa{background:var(--azul);color:#fff}
-.mapa-grade{display:grid;grid-template-columns:1fr 300px;gap:16px;align-items:start}
+.mapa-grade{display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start}
 #map{width:100%;height:520px;border:1px solid var(--linha);border-radius:5px;z-index:1}
+
+/* tela cheia do mapa — nativa e, quando bloqueada, a versão em CSS */
+#areaMapa:fullscreen,#areaMapa.tela-cheia{
+  position:fixed;inset:0;z-index:4000;background:#fff;padding:14px;margin:0;
+  grid-template-columns:1fr 360px;gap:14px;overflow:hidden;border-radius:0;
+}
+#areaMapa:fullscreen #map,#areaMapa.tela-cheia #map{height:calc(100vh - 92px)}
+#areaMapa:fullscreen .lateral,#areaMapa.tela-cheia .lateral{max-height:calc(100vh - 28px);overflow-y:auto}
+#areaMapa:fullscreen .ocorr-lista,#areaMapa.tela-cheia .ocorr-lista{max-height:calc(100vh - 470px);min-height:120px}
+.sair-cheia{display:none;position:absolute;top:22px;right:392px;z-index:4100}
+#areaMapa:fullscreen .sair-cheia,#areaMapa.tela-cheia .sair-cheia{display:block}
+@media (max-width:900px){
+  #areaMapa:fullscreen,#areaMapa.tela-cheia{grid-template-columns:1fr;overflow-y:auto}
+  #areaMapa:fullscreen #map,#areaMapa.tela-cheia #map{height:62vh}
+  .sair-cheia{right:22px}
+}
 .faixa-foco{display:none;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;padding:11px 15px;background:#eef1f8;border-left:4px solid var(--azul);border-radius:3px;font-size:13px;color:var(--azul)}
 .faixa-foco.ativa{display:flex}
 .lateral{border:1px solid var(--linha);border-radius:5px;padding:15px;background:#fafbfc}
@@ -171,6 +187,18 @@ tbody tr:nth-child(even){background:#fafbfc}
 .spark i.pico{background:var(--vermelho);opacity:1}
 .spark-eixo{display:flex;justify-content:space-between;font-size:9.5px;color:#9aa0ad;margin-bottom:12px}
 .legenda{font-size:12px;color:var(--suave);margin-top:10px}
+/* lista de ocorrências do ponto selecionado */
+.ocorr-cont{display:inline-block;background:var(--azul);color:#fff;border-radius:9px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:4px;vertical-align:middle}
+.ocorr-lista{list-style:none;margin:2px 0 12px;padding:0;max-height:300px;overflow-y:auto;border:1px solid var(--linha);border-radius:4px;background:#fff}
+.ocorr{padding:8px 10px;border-bottom:1px solid #eef0f4;font-size:12px}
+.ocorr:last-child{border-bottom:0}
+.ocorr:nth-child(even){background:#fafbfc}
+.ocorr-topo{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:4px}
+.ocorr-placa{font-weight:700;color:var(--azul);letter-spacing:.3px}
+.ocorr-data{font-size:11px;color:var(--suave);font-variant-numeric:tabular-nums;white-space:nowrap}
+.ocorr-linha{display:flex;justify-content:space-between;gap:8px;line-height:1.5}
+.ocorr-linha span{color:#9aa0ad;font-size:11px}
+.ocorr-linha strong{font-weight:500;color:#333;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:62%}
 .calor-esc{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--suave);margin-top:10px}
 .calor-barra{flex:1;height:8px;border-radius:4px;background:linear-gradient(90deg,#4a6fa5,#00ff00,#ff9900,#ff3333)}
 
@@ -378,6 +406,7 @@ canvas{max-height:290px!important}
       </div>
       <div class="pareto-box"><canvas id="gPareto"></canvas></div>
       <p class="rodape-tabela" id="paretoLegenda"></p>
+      <p class="dica-grafico">Clique em qualquer ponto da curva para listar os itens daquela fatia.</p>
     </div>
     <div class="insights" id="insights"></div>
   </section>
@@ -416,6 +445,7 @@ canvas{max-height:290px!important}
           <button class="aba ativa" data-mapa="pontos" onclick="trocarMapa('pontos')">Pontos</button>
           <button class="aba" data-mapa="calor" onclick="trocarMapa('calor')">Mapa de calor</button>
         </div>
+        <button class="btn btn-secundario btn-mini" id="btnTelaCheia">Tela cheia</button>
       </div>
     </div>
     <div class="aviso" id="avisoMapa" style="display:none"></div>
@@ -423,7 +453,8 @@ canvas{max-height:290px!important}
       <span id="textoFoco"></span>
       <button class="btn btn-secundario btn-mini" onclick="limparFoco()">Mostrar todos os pontos</button>
     </div>
-    <div class="mapa-grade">
+    <div class="mapa-grade" id="areaMapa">
+      <button class="btn btn-secundario btn-mini sair-cheia" id="btnSairCheia">Sair da tela cheia</button>
       <div>
         <div id="map"></div>
         <p class="legenda" id="legendaMapa"></p>
@@ -477,6 +508,25 @@ canvas{max-height:290px!important}
       <button class="btn btn-fantasma" onclick="cancelarMapeamento()">Descartar arquivo</button>
       <button class="btn btn-primario" onclick="confirmarMapeamento()">Aplicar</button>
     </div>
+  </div>
+</div>
+
+<div class="modal" id="modalPareto">
+  <div class="modal-caixa modal-largo">
+    <div class="modal-topo">
+      <div>
+        <h3 id="paretoTitulo2">Fatia selecionada</h3>
+        <p class="sub" id="paretoResumo2"></p>
+      </div>
+      <button class="btn btn-fantasma btn-mini" onclick="fecharParetoModal()">Fechar</button>
+    </div>
+    <div class="tabela-caixa" style="max-height:52vh;overflow:auto">
+      <table>
+        <thead><tr id="paretoCab"></tr></thead>
+        <tbody id="paretoCorpo"></tbody>
+      </table>
+    </div>
+    <p class="rodape-tabela" id="paretoNota"></p>
   </div>
 </div>
 
@@ -604,7 +654,11 @@ async function lerArquivo(arq){
   mostrar('carregando', `Lendo ${arq.name}...`);
   await new Promise(r => setTimeout(r, 20));
   try{
-    const wb = XLSX.read(new Uint8Array(await arq.arrayBuffer()), {type:'array', cellDates:true});
+    // cellDates:false de propósito. Com true, qualquer coluna numérica que tenha
+    // formato de data na planilha vira Date — foi o que corrompia o Cod Viagem
+    // (SM 9168202 virava "Sun Sep 06 27001"). As datas chegam como serial e a
+    // conversão fica por conta de paraData, que já trata número, texto e Date.
+    const wb = XLSX.read(new Uint8Array(await arq.arrayBuffer()), {type:'array', cellDates:false});
     const linhas = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {defval:null});
     if (!linhas.length) throw new Error('A planilha está vazia.');
 
@@ -698,7 +752,15 @@ function registrarMes(nome, linhas, mapa){
   aplicar();
 }
 
-const valor = (l,c) => c && l[c] != null && String(l[c]).trim() ? String(l[c]).trim() : '—';
+// Um Date aqui significa coluna com formato de data que não é data de evento;
+// exibir o toString cru seria pior que qualquer coisa.
+const valor = (l,c) => {
+  if (!c || l[c] == null) return '—';
+  const v = l[c];
+  if (v instanceof Date) return isNaN(v) ? '—' : v.toLocaleDateString('pt-BR');
+  const t = String(v).trim();
+  return t || '—';
+};
 
 function rotuloMes(ord){
   const nomes = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
@@ -1625,6 +1687,68 @@ function renderMapa(){
   atualizarFaixaFoco();
 }
 
+// Tela cheia: usa a API nativa quando disponível e, se ela for negada (acontece
+// em página embutida em iframe), cai para uma versão em CSS presa à viewport.
+let cheiaCss = false;
+
+function elementoCheio(){
+  return document.fullscreenElement || document.webkitFullscreenElement || null;
+}
+
+function alternarTelaCheia(){
+  const alvo = document.getElementById('areaMapa');
+  if (!alvo) return;
+
+  if (elementoCheio() || cheiaCss) return sairTelaCheia();
+
+  const pedir = alvo.requestFullscreen || alvo.webkitRequestFullscreen;
+  if (pedir){
+    Promise.resolve(pedir.call(alvo)).then(ajustarAposCheia).catch(() => entrarCheiaCss());
+  } else entrarCheiaCss();
+}
+
+function entrarCheiaCss(){
+  document.getElementById('areaMapa').classList.add('tela-cheia');
+  document.body.style.overflow = 'hidden';
+  cheiaCss = true;
+  ajustarAposCheia();
+}
+
+function sairTelaCheia(){
+  if (elementoCheio()){
+    const sair = document.exitFullscreen || document.webkitExitFullscreen;
+    if (sair) sair.call(document);
+  }
+  if (cheiaCss){
+    document.getElementById('areaMapa').classList.remove('tela-cheia');
+    document.body.style.overflow = '';
+    cheiaCss = false;
+  }
+  ajustarAposCheia();
+}
+
+// o Leaflet precisa ser avisado de que o contêiner mudou de tamanho
+function ajustarAposCheia(){
+  const cheio = !!elementoCheio() || cheiaCss;
+  const btn = document.getElementById('btnTelaCheia');
+  if (btn) btn.textContent = cheio ? 'Sair da tela cheia' : 'Tela cheia';
+  if (!map) return;
+  setTimeout(() => map.invalidateSize(), 120);
+  setTimeout(() => map.invalidateSize(), 400);
+}
+
+['btnTelaCheia','btnSairCheia'].forEach(id => {
+  const b = document.getElementById(id);
+  if (b) b.addEventListener('click', alternarTelaCheia);
+});
+
+['fullscreenchange','webkitfullscreenchange'].forEach(ev =>
+  document.addEventListener(ev, () => { if (!elementoCheio()) cheiaCss = false; ajustarAposCheia(); }));
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && cheiaCss) sairTelaCheia();
+});
+
 function trocarMapa(modo){
   modoMapa = modo;
   document.querySelectorAll('[data-mapa]').forEach(b => b.classList.toggle('ativa', b.dataset.mapa===modo));
@@ -1648,12 +1772,24 @@ function renderLateral(){
       Clique em um marcador do mapa ou em uma linha da tabela para ver o detalhe do local aqui.</p>`;
     return;
   }
+
   const porHora = new Array(24).fill(0);
   c.events.forEach(e => porHora[e.hora]++);
   const max = Math.max(...porHora);
   const pico = porHora.indexOf(max);
   const d = diagnostico(c);
-  const placas = [...new Set(c.events.map(e=>e.placa))].slice(0,8);
+
+  // ocorrências em ordem cronológica: é assim que se investiga um ponto
+  const ocorrencias = c.events.slice().sort((a,b) => a.data - b.data).map(e => `
+    <li class="ocorr">
+      <div class="ocorr-topo">
+        <span class="ocorr-placa">${esc(e.placa)}</span>
+        <span class="ocorr-data">${e.data.toLocaleDateString('pt-BR')} ${e.data.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</span>
+      </div>
+      <div class="ocorr-linha"><span>Motorista</span><strong>${esc(e.motorista)}</strong></div>
+      <div class="ocorr-linha"><span>SM</span><strong>${esc(e.sm)}</strong></div>
+      <div class="ocorr-linha"><span>Rastreador</span><strong>${esc(e.tecnologia)}</strong></div>
+    </li>`).join('');
 
   cx.innerHTML = `<h3>Ponto selecionado</h3>
     <div class="ponto-nome">${esc(c.reference)}</div>
@@ -1664,13 +1800,16 @@ function renderLateral(){
       <div><b>${c.tecnologias.length}</b><span>Tecn.</span></div>
     </div>
     <span class="diag ${d.classe}">${d.texto}</span>
+
     <div style="margin-top:13px"><h3>Eventos por hora</h3>
       <div class="spark">${porHora.map((v,h)=>`<i class="${h===pico&&max>0?'pico':''}" style="height:${max?Math.max(2,v/max*100):2}%" title="${h}h: ${v}"></i>`).join('')}</div>
       <div class="spark-eixo"><span>00h</span><span>12h</span><span>23h</span></div>
     </div>
-    <div style="font-size:12px;color:#6a6f7d;margin-bottom:12px">
-      <strong style="color:#020039">Placas:</strong> ${placas.map(esc).join(', ')}${c.vehicles.length>8?` +${c.vehicles.length-8}`:''}
-    </div>
+
+    <h3>Ocorrências <span class="ocorr-cont">${c.events.length}</span></h3>
+    <ul class="ocorr-lista">${ocorrencias}</ul>
+
+    <button class="btn btn-secundario btn-mini" data-acao="copiar" style="width:100%;margin-bottom:6px">Copiar lista</button>
     ${filtrandoPorEstePonto(c)
       ? `<button class="btn btn-primario btn-mini" data-acao="desfiltrar" style="width:100%;margin-bottom:6px">Remover o filtro deste ponto</button>`
       : `<button class="btn btn-secundario btn-mini" data-acao="filtrar" style="width:100%;margin-bottom:6px">Filtrar tudo por este ponto</button>`}
@@ -1680,13 +1819,45 @@ function renderLateral(){
   cx.querySelectorAll('[data-acao]').forEach(b => b.addEventListener('click', () => {
     if (b.dataset.acao === 'filtrar') filtrarPorPonto();
     else if (b.dataset.acao === 'desfiltrar') limparCampo('busca');
+    else if (b.dataset.acao === 'copiar') copiarOcorrencias(c, b);
     else selecionarPonto(id);
   }));
+}
+
+// texto pronto para colar em e-mail ou chamado
+function copiarOcorrencias(c, botao){
+  const linhas = [
+    `${c.reference} — ${c.cidade}/${c.uf}`,
+    `${coord(c.centerLat)}, ${coord(c.centerLon)}`,
+    `${c.events.length} ocorrência(s), ${c.vehicles.length} veículo(s)`,
+    '',
+    'Data/hora\tPlaca\tMotorista\tSM\tRastreador'
+  ];
+  c.events.slice().sort((a,b)=>a.data-b.data).forEach(e => {
+    linhas.push([
+      e.data.toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'}),
+      e.placa, e.motorista, e.sm, e.tecnologia
+    ].join('\t'));
+  });
+  const texto = linhas.join('\n');
+  const aviso = () => { const t=botao.textContent; botao.textContent='Copiado'; setTimeout(()=>botao.textContent=t,1500); };
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(texto).then(aviso).catch(()=>fallbackCopia(texto,aviso));
+  } else fallbackCopia(texto, aviso);
+}
+
+function fallbackCopia(texto, aviso){
+  const ta = document.createElement('textarea');
+  ta.value = texto; ta.style.position='fixed'; ta.style.left='-9999px';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); aviso(); } catch(e){}
+  document.body.removeChild(ta);
 }
 
 function filtrandoPorEstePonto(c){
   return !!filtros.busca.trim() && filtros.busca.trim() === c.reference.trim();
 }
+
 function filtrarPorPonto(){
   const c = viewData.find(x => idPonto(x) === pontoSel);
   if (!c) return;
@@ -1727,8 +1898,12 @@ function renderPareto(){
   const plural   = {locais:'locais', veiculos:'veículos'};
   const alvo = plural[modoPareto], um = singular[modoPareto];
 
-  const itens = (modoPareto==='locais' ? viewData.map(c=>c.events.length) : vehicleRows.map(v=>v.total))
-                .sort((a,b)=>b-a);
+  // guarda os itens em si, e não só as contagens: o modal precisa saber quem são
+  paretoItens = (modoPareto==='locais'
+    ? viewData.map(c=>({nome:c.reference, uf:c.uf, valor:c.events.length, extra:c.vehicles.length, ref:c}))
+    : vehicleRows.map(v=>({nome:v.placa, uf:v.tec, valor:v.total, extra:v.locaisDistintos, ref:v})))
+    .sort((a,b)=>b.valor-a.valor);
+  const itens = paretoItens.map(x=>x.valor);
   const total = itens.reduce((s,v)=>s+v,0);
   const n = itens.length;
   if (!total){ if (graficos.pareto){ graficos.pareto.destroy(); graficos.pareto=null; } return; }
@@ -1771,6 +1946,15 @@ function renderPareto(){
     options:{
       responsive:true, maintainAspectRatio:false,
       interaction:{mode:'nearest', axis:'x', intersect:false},
+      onClick:(ev, els, grafico) => {
+        // só dentro da área do plot: senão um clique na legenda, que alterna a
+        // série, abriria o modal junto
+        const a = grafico.chartArea;
+        if (!a || ev.x < a.left || ev.x > a.right || ev.y < a.top || ev.y > a.bottom) return;
+        const pos = grafico.scales.x.getValueForPixel(ev.x);
+        if (pos == null || isNaN(pos)) return;
+        abrirParetoModal(Math.min(100, Math.max(0.1, pos)));
+      },
       plugins:{
         legend:{position:'bottom', labels:{boxWidth:14, font:{size:11}, usePointStyle:false}},
         tooltip:{filter:i=>i.datasetIndex===0, callbacks:{
@@ -1789,6 +1973,67 @@ function renderPareto(){
     }
   });
 }
+
+// ---------- fatia do Pareto ----------
+let paretoItens = [];
+
+function abrirParetoModal(pctX){
+  if (!paretoItens.length) return;
+  const n = paretoItens.length;
+  const k = Math.max(1, Math.min(n, Math.round(pctX/100 * n)));
+  const total = paretoItens.reduce((s,x)=>s+x.valor,0);
+  const fatia = paretoItens.slice(0, k);
+  const somaFatia = fatia.reduce((s,x)=>s+x.valor,0);
+  const locais = modoPareto === 'locais';
+  const TETO = 80;
+
+  document.getElementById('paretoTitulo2').textContent =
+    locais ? `Os ${num(k)} locais de maior recorrência` : `Os ${num(k)} veículos de maior recorrência`;
+  document.getElementById('paretoResumo2').innerHTML =
+    `${Math.round(k/n*100)}% ${locais?'dos locais':'dos veículos'} · ` +
+    `<strong>${num(somaFatia)}</strong> de ${num(total)} eventos (<strong>${Math.round(somaFatia/total*100)}%</strong> do recorte)`;
+
+  document.getElementById('paretoCab').innerHTML = locais
+    ? '<th>#</th><th>Local</th><th>UF</th><th>Eventos</th><th>Placas</th><th>% do recorte</th><th>% acumulado</th>'
+    : '<th>#</th><th>Placa</th><th>Tecnologia</th><th>Eventos</th><th>Locais distintos</th><th>% do recorte</th><th>% acumulado</th>';
+
+  const corpo = document.getElementById('paretoCorpo');
+  corpo.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  let acc = 0;
+  fatia.slice(0, TETO).forEach((x,i) => {
+    acc += x.valor;
+    const tr = document.createElement('tr');
+    tr.className = 'clicavel';
+    tr.title = locais ? 'Clique para ver no mapa' : 'Clique para filtrar o mapa por esta placa';
+    tr.innerHTML = `<td>${i+1}</td>
+      <td><span class="nome">${esc(x.nome)}</span></td>
+      <td>${esc(x.uf)}</td>
+      <td><strong>${x.valor}</strong></td>
+      <td>${x.extra}</td>
+      <td>${dec(x.valor/total*100)}%</td>
+      <td>${dec(acc/total*100)}%</td>`;
+    tr.addEventListener('click', () => {
+      fecharParetoModal();
+      if (locais) selecionarPonto(idPonto(x.ref));
+      else focarPlaca(x.nome);
+    });
+    frag.appendChild(tr);
+  });
+  corpo.appendChild(frag);
+
+  document.getElementById('paretoNota').textContent = k > TETO
+    ? `Exibindo os ${TETO} primeiros de ${num(k)}. Clique mais à esquerda na curva para uma fatia menor.`
+    : 'Clique em uma linha para localizar no mapa.';
+
+  document.getElementById('modalPareto').classList.add('aberto');
+}
+
+function fecharParetoModal(){ document.getElementById('modalPareto').classList.remove('aberto'); }
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') fecharParetoModal();
+});
 
 /* =========================================================
    INSIGHTS
